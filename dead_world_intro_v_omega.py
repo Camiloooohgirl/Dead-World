@@ -1209,7 +1209,6 @@ def process_command(command):
         elif item == 'Stück Papier':
             add_to_history("Ein stück Papier, es hat blut schmieren drauf, teile der Notiz dadurch unlesbar.")
             add_to_history("Sie sind üb....... nirgends ist man sicher. Alles geshah nu........... em Präs......... abor.")
-        eli
     
     elif cmd in ['inventar', 'inv', 'i']:
         add_to_history("INVENTAR")
