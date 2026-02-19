@@ -4,7 +4,7 @@ import math
 import random
 import time
 import datetime
-
+#einfache änderung 
 # Pygame initialisieren
 pygame.init()
 
