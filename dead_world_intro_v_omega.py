@@ -434,8 +434,8 @@ rooms = {
     'bibliothek_1.2': {#Bibliothek
         'name': 'Bibliothek ',
         'description': '',
-        'exits': {'osten': 'bibliothek_1.'},
-        'items': [],
+        'exits': {'osten': 'bibliothek_1.1'},
+        'items': ['Stück Papier'],
         'in_development': False
     },
     'bibliothek_2': {#Bibliothek
@@ -485,7 +485,7 @@ rooms = {
         'name': 'Bibliothek 1',
         'description': '',
         'exits': {'süden': 'bibliothek_7'},
-        'items': [],
+        'items': ['kampfmesser'],
         'in_development': False
     },
     'nord_östliche_weggabelung': {#Stadt Norden
@@ -620,6 +620,13 @@ rooms = {
     },
     'norden_straße': {#Stadt Norden
         'name': 'Norden Straße',
+        'description': 'Im westen von dir ist ein Haus, die Türen stehen offen, im osten liegt der Parkplatz von Walmart. Im Süden gehsts zurück zur weggabelung.',
+        'exits': {'westen': 'haus_3_eingang', 'süden': 'nord_östliche_weggabelung', 'osten': 'parkplatz'},
+        'items': [],
+        'in_development': True
+    },
+    'haus_3': {#Haus3
+        'name': 'haus_3',
         'description': 'Im westen von dir ist ein Haus, die Türen stehen offen, im osten liegt der Parkplatz von Walmart. Im Süden gehsts zurück zur weggabelung.',
         'exits': {'westen': 'haus_3_eingang', 'süden': 'nord_östliche_weggabelung', 'osten': 'parkplatz'},
         'items': [],
@@ -995,20 +1002,19 @@ def trigger_two_year_timeskip():
     add_to_history("")
     add_to_history("=" * 40)
     add_to_history("")
-    add_to_history("Sonnenlicht fällt durch das Fenster.")
+    add_to_history("")
     add_to_history("")
     add_to_history("Du öffnest langsam die Augen.")
     add_to_history("")
-    add_to_history("Zwei Jahre. Zwei Jahre hast du dich hier versteckt.")
-    add_to_history("Von der Außenwelt abgeschottet. Überlebt.")
-    add_to_history("")
-    add_to_history("Du schwingst die Beine aus dem Bett und stehst auf.")
+    add_to_history("Du hiefst dich von der Matratze auf die auf dem Boden des Lagerraum im Keller liegt.")
+    add_to_history("Geweckt vom geräusch eines Zombies der in der Nacht rein kam.")
     add_to_history("")
     
-    # Teleportiere zum Schlafzimmer
-    current_room = 'schlafzimmer'
-    describe_room()
+    # Teleportiere zum Lagerraum
+    current_room = 'lagerraum'
+    
     add_to_history("")
+    describe_room()
 
 def describe_room():
     """Beschreibt den aktuellen Raum"""
@@ -1193,10 +1199,17 @@ def process_command(command):
             item = cmd[5:].strip()
         elif cmd.startswith('lies '):
             item = cmd[5:].strip()
-        else:
+        elif cmd.startswith('lesen '):
             item = cmd[6:].strip()
         
         read_item(item)
+        if item == 'tagebuch':
+            add_to_history("Im Tagebuch hast du deine letzen 2 Jahre in diesem haus Dokumentiert.")
+            add_to_history("Jeder einzelne zombie oder Mensch der versuchte reinzukommen.")
+        elif item == 'Stück Papier':
+            add_to_history("Ein stück Papier, es hat blut schmieren drauf, teile der Notiz dadurch unlesbar.")
+            add_to_history("Sie sind üb....... nirgends ist man sicher. Alles geshah nu........... em Präs......... abor.")
+        eli
     
     elif cmd in ['inventar', 'inv', 'i']:
         add_to_history("INVENTAR")
@@ -1223,7 +1236,7 @@ def process_command(command):
         fist_level = player_stats['fist_level']
         fist_bonus = FIST_LEVEL_BONUSES[fist_level]
         min_dmg, max_dmg = fist_bonus['damage']
-        black_flash_percent = round(fist_bonus['black_flash'] * 100, 1)
+        black_flash_percent = round(weapons['fäuste'].get('black_flash', 0) * 100, 1)
             
         add_to_history("")
         add_to_history(f"=== FÄUSTE (Level {fist_level}/5) ===")
@@ -1335,7 +1348,7 @@ def process_command(command):
         
         # Reset Enemies
         for enemy_key in enemies:
-            enemies[enemy_key]['health'] = enemies[enemy_key],['max_health']
+            enemies[enemy_key]['health'] = enemies[enemy_key]['max_health']
         
         # Reset Rooms
         rooms['start']['first_visit'] = True
