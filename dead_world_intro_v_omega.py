@@ -5,6 +5,7 @@ import random
 import time
 import datetime
 import os
+from game_map import rebuild_game_map, GAME_MAP, get_room_coord, BIOME_COLORS, BIOME_ICONS
 # Pygame initialisieren
 pygame.init()
 pygame.mixer.init()
@@ -837,6 +838,9 @@ rooms = {
         'in_development': True
     },     
 }
+
+# Build the spatial GAME_MAP from the rooms dictionary
+rebuild_game_map(rooms)
 
 # ========================
 # HIERARCHICAL CONTAINER SYSTEM
@@ -1713,53 +1717,9 @@ def describe_room():
 # GRAPHISCHES KARTEN-SYSTEM (Node Graph)
 # ========================
 
-# Hardcoded node coordinates for the hierarchical map (x, y) grid units
-GRAPH_LAYOUT = {
-    # Bunker
-    'start': (0, 0), 'corridor': (0, 2), 'laboratory': (-2, 2.5), 
-    'storage': (2, 2), 'tunnel': (2, 4),
-    
-    # Safehouse (Versteck) 
-    'spawn': (6, 0), 'eingangsbereich': (8, 0), 'vordertuer': (8, -2),
-    'wohnzimmer': (10, 0), 'wohnbereich': (8, 2), 'kueche': (10, 2),
-    'schlafzimmer2': (10, 4), 'treppen': (8, 4), 'flur': (6, 2),
-    'schlafzimmer': (6, 4), 'badezimmer': (4, 2),
-    # Safehouse Keller
-    'keller': (12, 5), 'lagerraum': (14, 5),
-    
-    # Stadt
-    'suedlich_haus': (8, -5), 'westlich_haus_gabelung': (5, -5),
-    'haus1': (8, -7), 'oestlich_weggabelung': (11, -5),
-    'nord_westliche_weggabelung': (5, -8), 'östliche_straße': (11, -8),
-    'nord_östliche_weggabelung': (11, -11), 'norden_straße': (11, -14),
-    'park_straße': (14, -5), 'skyscraper_weggabelung': (11, -2),
-    'weggabelung_skyscraper2': (11, 0), 'noerdlich_haus': (14, -8),
-    'krankenhaus_straße': (3, -5), 'bibliothek_straße': (5, -11),
-    
-    # Krankenhaus
-    'krankenhaus_eingang': (1, -5),
-    
-    # Bibliothek
-    'bibliothek_eingang': (5, -13), 'bibliothek_1.1': (3, -13),
-    'bibliothek_1.2': (1, -13), 'bibliothek_2': (3, -15),
-    'bibliothek_3': (3, -17), 'bibliothek_4': (3, -19),
-    'bibliothek_5': (1, -19), 'bibliothek_6': (5, -19),
-    'bibliothek_7': (1, -21), 'bibliothek_8': (5, -21),
-    
-    # Walmart
-    'parkplatz': (14, -14), 'walmart_eingang': (17, -14),
-    'walmart_1': (19, -14), 'walmart_2': (19, -16), 'walmart_3': (19, -12),
-    'walmart_4': (21, -14), 'walmart_5': (21, -16), 'walmart_6': (21, -12),
-    'walmart_7': (23, -14), 'walmart_8': (23, -16), 'walmart_9': (23, -12),
-    'walmart_10': (25, -14), 'walmart_11': (25, -16),
-    'walmart_12.1': (25, -12), 'walmart_12.2': (27, -12),
-    'walmart_13': (25, -10), 'walmart_14': (23, -10),
-    
-    # Haus 3
-    'haus_3_eingang': (7, -14), 'haus_3_v': (7, -16), 
-    'haus_3_wohnbereich': (5, -16), 'wohnzimmer_h3': (7, -18),
-    'küche_h3': (9, -16), 'bathroom_3': (5, -18), 'bedroom_3': (3, -16)
-}
+# Auto-generated node coordinates from game_map.py BFS solver
+# Scaled by 2x for visual spacing in the graph view
+GRAPH_LAYOUT = {rk: (coord[0] * 2, coord[1] * 2) for rk, coord in ((r, get_room_coord(r)) for r in rooms) if coord is not None}
 
 def draw_map(current_time):
     """Zeichnet den Hierarchischen Node Graph basierend auf Nested Containern"""
@@ -3362,6 +3322,9 @@ def main():
                     elif current_state == OPTIONS:
                         current_state = MENU
                         _start_menu_music()
+                    elif current_state == MAP:
+                        current_state = GAME
+                        map_dragging = False
                     elif current_state == GAME:
                         current_state = MENU
                         _start_menu_music()
@@ -3434,7 +3397,7 @@ def main():
                         if not prolog_shown:
                             # Im Prolog: Enter zeigt mehr Text
                             process_command("")
-                        elif input_text.strip().lower() in ["karte", "map"] and not prolog_shown:
+                        elif input_text.strip().lower() in ["karte", "map"] and prolog_shown:
                             current_state = MAP
                             map_camera_x = 0
                             map_camera_y = 0
@@ -3571,8 +3534,9 @@ def main():
                 if current_state == MAP and map_dragging:
                     dx = event.pos[0] - map_drag_last_pos[0]
                     dy = event.pos[1] - map_drag_last_pos[1]
-                    map_camera_x -= dx / map_zoom
-                    map_camera_y -= dy / map_zoom
+                    drag_speed = 0.1  # Damping factor (lower = slower drag)
+                    map_camera_x -= dx * drag_speed / map_zoom
+                    map_camera_y -= dy * drag_speed / map_zoom
                     map_drag_last_pos = event.pos
         
         # State-basiertes Rendering
