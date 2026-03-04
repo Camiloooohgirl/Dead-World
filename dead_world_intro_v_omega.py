@@ -6,6 +6,11 @@ import time
 import datetime
 import os
 from game_map import rebuild_game_map, GAME_MAP, get_room_coord, BIOME_COLORS, BIOME_ICONS
+from config import *
+from render_utils import *
+import render_utils
+import command_handlers
+import event_handlers
 # Pygame initialisieren
 pygame.init()
 pygame.mixer.init()
@@ -40,100 +45,20 @@ def stop_zombie_sounds():
         _current_zombie_sound.stop()
         _current_zombie_sound = None
 
-# Konstanten
-WIDTH, HEIGHT = 1900, 1000
-FPS = 60
-
-# Resolution Presets (Name, Breite, Höhe)
-RESOLUTION_PRESETS = [
-    ('Sehr Niedrig', 800, 450),
-    ('Niedrig', 1024, 576),
-    ('Mittel', 1280, 720),
-    ('Hoch', 1600, 900),
-    ('Sehr Hoch', 1920, 1080)
-]
-current_resolution_index = 2  # Standard: Sehr Hoch (1920x1080)
-# Farben — Atmospheric Post-Apocalyptic Palette
-BLACK = (8, 6, 8)
-BLOOD_RED = (170, 20, 20)
-DARK_RED = (90, 5, 5)
-DEEP_RED = (50, 0, 0)
-GRAY = (55, 50, 55)
-LIGHT_GRAY = (120, 115, 120)
-DARK_GRAY = (22, 18, 22)
-HOVER_RED = (220, 40, 30)
-GREEN = (0, 255, 0)
-TERMINAL_GREEN = (60, 140, 255)
-TERMINAL_DIM = (30, 70, 140)
-TERMINAL_BG = (8, 10, 18)
-EMBER_ORANGE = (255, 120, 30)
-EMBER_DIM = (180, 70, 10)
-ACCENT_GLOW = (255, 60, 40)
-FOG_COLOR = (20, 18, 25)
-
-# Referenz-Auflösung für Skalierung (Basis-Layout)
-REFERENCE_WIDTH = 1280
-REFERENCE_HEIGHT = 720
-
-# Font-Cache für skalierte Schriften
-_font_cache = {}
-_last_scale_factor = None
-
-# Terminal-Font (Cascadia Code = moderner Microsoft-Monospace-Font)
-TERMINAL_FONT_NAME = "cascadiacode"
-
-def get_scale_factor():
-    """Berechnet einheitlichen Skalierungsfaktor basierend auf Fensterbreite"""
-    scale_x = screen.get_width() / REFERENCE_WIDTH
-    scale_y = screen.get_height() / REFERENCE_HEIGHT
-    return min(scale_x, scale_y)
-
-def scale(value):
-    """Skaliert einen Wert proportional zur aktuellen Auflösung"""
-    return int(value * get_scale_factor())
-
-def scale_x(value):
-    """Skaliert horizontal (für Positionen die sich mit Breite ändern)"""
-    return int(value * screen.get_width() / REFERENCE_WIDTH)
-
-def scale_y(value):
-    """Skaliert vertikal (für Positionen die sich mit Höhe ändern)"""
-    return int(value * screen.get_height() / REFERENCE_HEIGHT)
-
-def scale_pos(x, y):
-    """Skaliert eine Position und zentriert bei abweichendem Seitenverhältnis"""
-    factor = get_scale_factor()
-    offset_x = (screen.get_width() - REFERENCE_WIDTH * factor) / 2
-    offset_y = (screen.get_height() - REFERENCE_HEIGHT * factor) / 2
-    return (int(x * factor + offset_x), int(y * factor + offset_y))
-
-def get_scaled_font(base_size):
-    """Gibt skalierte Schrift zurück (gecacht für Performance)"""
-    global _last_scale_factor
-    
-    current_factor = get_scale_factor()
-    # Cache leeren wenn Skalierung sich geändert hat
-    if _last_scale_factor != current_factor:
-        _font_cache.clear()
-        _last_scale_factor = current_factor
-    
-    scaled_size = max(12, scale(base_size))
-    if scaled_size not in _font_cache:
-        # Consolas = sauberer Monospace-Font, kein Artefakt-Bug
-        _font_cache[scaled_size] = pygame.font.SysFont(TERMINAL_FONT_NAME, scaled_size)
-    return _font_cache[scaled_size]
-
-def clear_font_cache():
-    """Leert den Font-Cache bei manueller Auflösungsänderung"""
-    global _last_scale_factor
-    _font_cache.clear()
-    _last_scale_factor = None
+# Scaling-Funktionen und Font-Cache in render_utils.py
+current_resolution_index = 2  # Standard: Mittel (1280x720)
 
 # Fenster erstellen
 screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)
 pygame.display.set_caption("Dead World")
 clock = pygame.time.Clock()
 fullscreen = False
+init_render(screen)  # Scaling-Funktionen an Screen binden
+
+# Module initialisieren die Zugriff auf das Hauptmodul brauchen
+import sys as _sys
+command_handlers.init_handlers(_sys.modules[__name__])
+event_handlers.init_event_handlers(_sys.modules[__name__])
 
 # Fonts
 font_large = pygame.font.Font(None, 120)
@@ -142,13 +67,7 @@ font_small = pygame.font.Font(None, 50)
 font_terminal = pygame.font.Font(None, 30)
 font_tiny = pygame.font.Font(None, 25)
 
-# Game States
-INTRO = 0
-MENU = 1
-OPTIONS = 2
-GAME = 3
-MAP = 4
-MAP = 4
+# Game States (Definitionen in config.py)
 current_state = INTRO
 
 # Map-System Globals (Graph View)
@@ -165,7 +84,7 @@ map_drag_last_pos = (0, 0)
 node_dragging = False          # True wenn ein Node gerade gezogen wird
 node_drag_key = None           # room_key des gezogenen Nodes
 node_hovered_key = None        # room_key des Nodes unter der Maus
-MAP_LAYOUT_FILE = os.path.join(os.path.dirname(__file__), 'custom_map_layout.json')
+# MAP_LAYOUT_FILE importiert aus config.py
 
 # Building-Dragging (Block dragging)
 building_dragging = False      # True wenn ein ganzes Gebäude gezogen wird
@@ -211,11 +130,9 @@ prolog_line_index = 0
 command_history = []
 history_index = -1
 
-# Backspace-Repeat
+# Backspace-Repeat (Delays in config.py)
 backspace_held = False
 backspace_timer = 0
-backspace_initial_delay = 250  # ms
-backspace_repeat_delay = 25    # ms
 last_backspace_time = 0
 
 #Biblio
@@ -232,8 +149,7 @@ right_held = False
 last_right_time = 0
 enter_held = False
 last_enter_time = 0
-key_initial_delay = 250  # ms
-key_repeat_delay = 35    # ms
+# key_initial_delay und key_repeat_delay in config.py
 
 # Scroll-System
 scroll_offset = 0
@@ -244,7 +160,7 @@ typewriter_queue = []          # Warteschlange für Zeilen die noch getippt werd
 typewriter_current_line = ""   # Die aktuelle Zeile die getippt wird
 typewriter_reveal_index = 0    # Wie viele Zeichen sichtbar sind
 typewriter_last_time = 0       # Letzter Zeitpunkt an dem ein Zeichen hinzugefügt wurde
-TYPEWRITER_SPEED = 1           # Millisekunden pro Zeichen (1 = extrem schnell)
+# TYPEWRITER_SPEED in config.py
 typewriter_active = False      # Ob gerade getippt wird
 
 # Cached CRT-Scanline Surface (nur einmal erstellen)
@@ -269,8 +185,7 @@ _fog_surface_size = (0, 0)
 _gradient_sep_cache = None
 _gradient_sep_cache_key = (0, 0, 0)  # (w, padding, color_key)
 
-# Kampfsystem
-ZOMBIE_RESPAWN_COOLDOWN = 300  # 5 Minuten in Sekunden
+# Kampfsystem (ZOMBIE_RESPAWN_COOLDOWN in config.py)
 zombie_kill_times = {}  # room_key -> time.time() wann Zombie zuletzt getötet wurde
 
 player_stats = {   
@@ -292,7 +207,7 @@ visited_rooms_desc = set()      # Bereits beschriebene Räume (für brief mode)
 game_score = 0                  # Zork-style Punkte
 game_moves = 0                  # Zähler für Spielerzüge
 game_start_ticks = 0            # pygame.time.get_ticks() beim Spielstart
-SAVE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'dead_world_save.json')
+# SAVE_FILE importiert aus config.py
 
 # Pending Ambiguity (wenn der Parser fragt "Was meinst du?")
 pending_ambiguity = None        # {'action': str, 'candidates': [...], 'original_cmd': str}
@@ -542,128 +457,21 @@ def tick_hidden_systems():
     
     return messages
 
-# Score-Werte für verschiedene Aktionen
-SCORE_VALUES = {
-    'zombie_kill': 30,
-    'item_pickup': 5,
-    'new_room': 2,
-    'container_found': 10,
-    'move': 0,  # Züge kosten keine Punkte, werden aber gezählt
-}
-
-# === REACTIVE PARSER SYSTEM ===
-# Alle bekannten Verben (für "Unbekanntes Verb" Erkennung)
-KNOWN_VERBS = {
-    'n', 'norden', 'nord', 'o', 'osten', 'ost', 's', 'süden', 'süd', 'sued',
-    'w', 'westen', 'west', 'so', 'südosten', 'nw', 'nordwesten', 'h', 'hoch',
-    'r', 'runter', 'gehe', 'nimm', 'lese', 'lies', 'lesen', 'esse', 'iss',
-    'inventar', 'inv', 'i', 'schaue', 'schau', 'look', 'l', 'karte', 'map',
-    'ausrüsten', 'schieße', 'schiesse', 'schlag', 'schlage', 'stich',
-    'clear', 'cls', 'echo', 'time', 'whoami', 'neu',
-    'hilfe', 'help', 'öffne', 'oeffne', 'schließ', 'schliess', 'lege',
-    'verbose', 'ausführl', 'brief', 'kurz', 'superbrie', 'superkur', 'superkurz',
-    'info', 'q', 'quit', 'beenden', 'save', 'speicher', 'speichern',
-    'restore', 'laden', 'score', 'punkte', 'zeit', 'diagnose', 'd',
-    'schieben', 'schieb', 'brech', 'zerhacke', '?',
-}
-
-# Verben die ein Objekt brauchen
-VERBS_NEED_OBJECT = {
-    'nimm': 'nehmen', 'lese': 'lesen', 'lies': 'lesen', 'lesen': 'lesen',
-    'esse': 'essen', 'iss': 'essen', 'öffne': 'öffnen', 'oeffne': 'öffnen',
-    'ausrüsten': 'ausrüsten', 'lege': 'legen',
-}
-
-# Abwechslungsreiche Antworten für unbekannte Verben (Zork-Stil)
-UNKNOWN_VERB_RESPONSES = [
-    "Das Wort '{verb}' kenne ich nicht.",
-    "Ich weiß nicht, was '{verb}' bedeuten soll.",
-    "'{verb}'? Das ist kein Befehl, den ich verstehe.",
-    "Weder Mensch noch Maschine kennt den Befehl '{verb}'.",
-    "Du murmelst '{verb}' vor dich hin. Nichts passiert.",
-    "'{verb}' ergibt für mich keinen Sinn.",
-    "Selbst in der Apokalypse versteht niemand '{verb}'.",
-    "Bitte was? '{verb}' ist mir nicht bekannt.",
-]
-
-# Snarky Antworten für logisch unmögliche Aktionen
-ILLOGICAL_RESPONSES = {
-    'eat_weapon': [
-        "Das wäre unglaublich schmerzhaft und überhaupt nicht nahrhaft.",
-        "Du versuchst hineinzubeißen... Nein. Einfach nein.",
-        "Dein Magen würde das nicht überleben.",
-        "Das ist eine Waffe, kein Snack.",
-    ],
-    'eat_inedible': [
-        "Das kannst du nicht essen, so verzweifelt bist du noch nicht.",
-        "Das sieht nicht besonders appetitlich aus...",
-        "Dein Magen protestiert schon beim Gedanken daran.",
-        "Das ist definitiv nicht essbar.",
-    ],
-    'equip_food': [
-        "Du schwingst drohend die Konserve... Nicht sehr angsteinflößend.",
-        "Das ist Essen, keine Waffe. Obwohl... nein.",
-        "Damit würdest du höchstens dich selbst verletzen.",
-    ],
-    'equip_non_weapon': [
-        "Das lässt sich nicht als Waffe verwenden.",
-        "Du versuchst es drohend zu schwingen. Es sieht lächerlich aus.",
-        "Das ist keine Waffe.",
-    ],
-}
-#
+# Score-Werte, Parser-System, Verb-Listen und Responses importiert aus config.py
 def spawn_chance():
     if random.random() < 0.15:  # 15% statt 50% – weniger Zombie-Spam
         return True
     return False
 
-# Bonus-Stats pro Fäuste-Level
-FIST_LEVEL_BONUSES = {
-    1: {'damage': [99, 100]},
-    2: {'damage': [99, 100]},
-    3: {'damage': [12, 22]},
-    4: {'damage': [18, 30]},
-    5: {'damage': [25, 40]}   # Max Level
-}
+# FIST_LEVEL_BONUSES, weapons, food_items, enemies importiert aus config.py
 
 # QTE System
 qte_active = False
 qte_sequence = []
 qte_input = ""
 qte_start_time = 0
-qte_duration = 2.0  # Sekunden
+# qte_duration in config.py
 qte_callback = None
-
-# Waffen, dmg, crit_chance
-weapons = {
-    'ak': {'name': 'AK-47', 'type': 'ranged', 'damage': [50, 75], 'accuracy': 0.7, 'ammo': 30},
-    'pistole': {'name': 'Pistole', 'type': 'ranged', 'damage': [40, 60], 'accuracy': 0.8, 'ammo': 12},
-    'küchenmesser': {'name': 'Küchenmesser', 'type': 'melee', 'damage': [20, 35], 'crit_chance': 0.3},
-    'kampfmesser': {'name': 'Kampfmesser', 'type': 'melee', 'damage': [25, 40], 'crit_chance': 0.35},
-    'feuerlöscher': {'name': 'Feuerlöscher', 'type': 'melee', 'damage': [50, 80], 'crit_chance': 0.25},
-    'fäuste': {'name': 'Fäuste', 'type': 'melee', 'damage': [99, 100], 'black_flash': 1.00},
-    'baseball_schläger': {'name': 'Bassseball Schläger', 'type': 'melee', 'damage': [25, 35], 'crit_chance': 0.25},
-    'axt': {'name': 'Axt', 'type': 'melee', 'damage': [35, 50], 'crit_chance': 0.3},
-    'machete': {'name': 'Machete', 'type': 'melee', 'damage': [30, 45], 'crit_chance': 0.35},
-}
-
-# Essbare Items (Zork-inspiriert)
-food_items = {
-    'konserven': {'name': 'Konservendose', 'heal': 25, 'message': 'Du öffnest die Konservendose und isst den Inhalt. Nicht gerade ein Gourmetmahl, aber es füllt den Magen.'},
-    'medkit': {'name': 'Medkit', 'heal': 50, 'message': 'Du öffnest das Medkit und versorgst deine Wunden. Schon besser.'},
-    'schokoriegel': {'name': 'Schokoriegel', 'heal': 10, 'message': 'Du beißt in den alten Schokoriegel. Etwas trocken, aber der Zucker gibt dir Energie.'},
-    'dosenfleisch': {'name': 'Dosenfleisch', 'heal': 30, 'message': 'Du öffnest die Dose Fleisch. Es riecht fragwürdig, schmeckt aber noch... akzeptabel.'},
-    'wasser': {'name': 'Wasserflasche', 'heal': 15, 'message': 'Du trinkst die Wasserflasche in großen Zügen leer. Erfrischend.'},
-    'energieriegel': {'name': 'Energieriegel', 'heal': 20, 'message': 'Du isst den Energieriegel. Kompakt und nahrhaft - genau was du brauchst.'},
-    'crackers': {'name': 'Crackers', 'heal': 10, 'message': 'Du knabberst die trockenen Crackers. Nicht viel, aber besser als nichts.'},
-    'apfel': {'name': 'Apfel', 'heal': 12, 'message': 'Du beißt in den Apfel. Etwas schrumpelig, aber erstaunlich saftig.'},
-}
-
-# Gegner-Datenbank
-enemies = {
-    'zombie': {'name': 'Toxoplasma-Zombie', 'health': 100, 'max_health': 100, 'damage': [8, 20], 'distance': 'nah'},
-    'infizierter': {'name': 'Infizierter Mensch', 'health': 80, 'max_health': 80, 'damage': [8, 15], 'distance': 'mittel'}
-}
 
 current_enemy = None
 
@@ -1691,6 +1499,7 @@ def toggle_fullscreen():
         screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
     else:
         screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)
+    init_render(screen)
 
 def _draw_gradient_line(surface, center_x, y, half_width, color, max_alpha=80):
     """Zeichnet eine gecachte Gradient-Linie (vermeidet per-pixel draw calls)"""
@@ -2025,6 +1834,7 @@ def change_resolution(direction):
     # Neue Auflösung anwenden
     name, width, height = RESOLUTION_PRESETS[new_index]
     screen = pygame.display.set_mode((width, height), pygame.RESIZABLE)
+    init_render(screen)
 
 def get_current_resolution_name():
     """Gibt den Namen der aktuellen Auflösung zurück"""
@@ -2829,35 +2639,30 @@ def handle_look_in(container_key):
     add_to_history("")
 
 def process_command(command):
-    """Verarbeitet Spielerbefehle"""
+    """Verarbeitet Spielerbefehle — dispatcht an command_handlers.py"""
     global current_room, prolog_shown, prolog_line_index, qte_active, qte_input, command_history, history_index, current_state, map_camera_x, map_camera_y, map_zoom, map_coords_dirty, map_cursor_room
     global pending_ambiguity, game_moves, view_mode, game_score
     
     # Füge Command zur History hinzu (außer im QTE oder Prolog)
     if prolog_shown and not qte_active and command.strip():
         command_history.append(command)
-        # Begrenze History auf 50 Einträge
         if len(command_history) > 50:
             command_history.pop(0)
     
-    # Reset history index
     history_index = -1
     
-    # QTE-Modus: Taste eingeben
+    # QTE-Modus
     if qte_active:
         qte_input += command.upper()
         return
     
-    # Prolog-Modus: Enter drücken zeigt mehr Text
+    # Prolog-Modus
     if not prolog_shown:
         if prolog_line_index < len(prolog_lines):
-            # Zeige nächste 3 Zeilen
             end_index = min(prolog_line_index + 3, len(prolog_lines))
             for i in range(prolog_line_index, end_index):
                 add_to_history(prolog_lines[i])
             prolog_line_index = end_index
-            
-            # Prüfe ob Prolog fertig
             if prolog_line_index >= len(prolog_lines):
                 prolog_shown = True
                 add_to_history("")
@@ -2871,7 +2676,6 @@ def process_command(command):
     # === 9-Letter Truncation ===
     words = cmd.split()
     words = [w[:9] for w in words]
-    # Resolve truncated words back to full item/weapon keys (prefix match)
     room = rooms.get(current_room, {})
     all_keys = set(ITEM_DEFS.keys()) | set(weapons.keys()) | set(room.get('items', [])) | set(player_inventory)
     resolved_words = []
@@ -2905,658 +2709,23 @@ def process_command(command):
             pending_ambiguity = None
             return
 
-    # Zähle Züge (nur echte Spielerbefehle)
+    # Zähle Züge
     if cmd and prolog_shown:
         game_moves += 1
-        # Tick hidden systems (hunger, light, recovery)
         tick_msgs = tick_hidden_systems()
         for _tmsg in tick_msgs:
             add_to_history(_tmsg)
 
-    if cmd in ['hilfe', 'help', '?']:
-        add_to_history("DEAD WORLD - BEFEHLE")
-        add_to_history("")
-        add_to_history("Bewegung:")
-        add_to_history("  n, norden - Gehe nach Norden")
-        add_to_history("  o, osten - Gehe nach Osten")
-        add_to_history("  s, süden - Gehe nach Süden")
-        add_to_history("  w, westen - Gehe nach Westen")
-        add_to_history("  r, runter - Gehe nach Unten")
-        add_to_history("  h, hoch - Gehe nach Oben")
-        add_to_history("  gehe [richtung] - Alternative Schreibweise")
-        add_to_history("  schaue, look - Raum beschreiben")
-        add_to_history("")
-        add_to_history("Gegenstände:")
-        add_to_history("  nimm [item] - Item aufheben")
-        add_to_history("  lese [item] - Item lesen (Zeitung, Notizen)")
-        add_to_history("  esse [item] - Essen/Trinken konsumieren")
-        add_to_history("  inventar, inv - Inventar anzeigen")
-        add_to_history("")
-        add_to_history("Kampf:")
-        add_to_history("  ausrüsten [waffe] - Waffe ausrüsten")
-        add_to_history("  schlag [ziel] - Nahkampf")
-        add_to_history("  stich auf [ziel] - Mit Messer angreifen")
-        add_to_history("  schieße auf [ziel] - Schusswaffe nutzen")
-        add_to_history("")
-        add_to_history("Terminal:")
-        add_to_history("  clear, cls - Terminal leeren")
-        add_to_history("  echo [text] - Text ausgeben")
-        add_to_history("  time - Aktuelle Zeit anzeigen")
-        add_to_history("  whoami - Charakter-Info")
-        add_to_history("  karte, map - Weltkarte anzeigen")
-        add_to_history("")
-        add_to_history("System:")
-        add_to_history("  save, speichern - Spiel speichern")
-        add_to_history("  restore, laden - Spiel laden")
-        add_to_history("  score, punkte - Punkte anzeigen")
-        add_to_history("  zeit - Spielzeit anzeigen")
-        add_to_history("  diagnose, d - Gesundheits- und Zustandsbericht")
-        add_to_history("  info - Spielinfo")
-        add_to_history("  q, quit - Beenden")
-        add_to_history("  verbose/brief/superbrief - Beschreibungsmodus")
-        add_to_history("  neu - Neustart nach Tod")
-        add_to_history("")
-        add_to_history("Behälter:")
-        add_to_history("  öffne/schließe [behälter]")
-        add_to_history("  lege [item] in [behälter]")
-        add_to_history("  nimm [item] aus [behälter]")
-        add_to_history("  schaue in [behälter]")
-        add_to_history("")
-    
-    elif cmd.startswith('gehe '):
-        direction = cmd[5:].strip()
-        move_direction(direction)
-    
-    # Direkte Richtungsbefehle: n, o, s, w
-    elif cmd in ['n', 'norden', 'nord']:
-        move_direction('norden')
-    
-    elif cmd in ['o', 'osten', 'ost']:
-        move_direction('osten')
-    
-    elif cmd in ['s', 'süden', 'süd', 'sued']:
-        move_direction('süden')
-    
-    elif cmd in ['w', 'westen', 'west']:
-        move_direction('westen')
-    
-    elif cmd in ['so', 'südosten', 'suedosten', 'süd-osten', 'sued-osten']:
-        move_direction('südosten')
-    
-    elif cmd in ['nw', 'nordwesten', 'nord-westen']:
-        move_direction('nordwesten')
-
-    elif cmd in ['h', 'hoch', 'up']:
-        move_direction('hoch')
-    
-    elif cmd in ['r', 'runter', 'down']:
-        move_direction('runter')
-    
-    elif cmd == 'nimm':
-        # Ambiguity: kein Objekt angegeben
-        room = rooms[current_room]
-        available = room.get('items', [])
-        if len(available) == 1:
-            process_command(f'nimm {available[0]}')
-        elif len(available) > 1:
-            add_to_history("Was möchtest du nehmen?")
-            for idx, it in enumerate(available, 1):
-                add_to_history(f"  {idx}. {get_item_name(it)}")
-            pending_ambiguity = {'action': 'nimm', 'candidates': available[:], 'original_cmd': 'nimm'}
-            add_to_history("")
-        else:
-            add_to_history("Hier gibt es nichts zum Nehmen.")
-            add_to_history("")
-    
-    elif cmd.startswith('nimm ') and ' aus ' not in cmd:
-        item = cmd[5:].strip()
-        room = rooms[current_room]
-        if item in room['items']:
-            # Encumbrance check
-            idef = ITEM_DEFS.get(item)
-            item_weight = idef.weight if idef else 1
-            if get_player_carry_weight() + item_weight > player_stats['max_weight']:
-                add_to_history("Deine Last ist zu schwer. Du kannst nichts mehr tragen.")
-                add_to_history("")
-            else:
-                room['items'].remove(item)
-                player_inventory.append(item)
-                add_to_history(f"Du nimmst {get_item_name(item)}.")
-                add_score('item_pickup')
-                enc = get_encumbrance_description()
-                if enc:
-                    add_to_history(enc)
-                add_to_history("")
-        else:
-            add_to_history(f"Hier gibt es kein '{item}'.")
-            add_to_history("")
-    
-    elif cmd.startswith('lese ') or cmd.startswith('lies ') or cmd.startswith('lesen '):
-        # Extrahiere Item-Name
-        if cmd.startswith('lese '):
-            item = cmd[5:].strip()
-        elif cmd.startswith('lies '):
-            item = cmd[5:].strip()
-        elif cmd.startswith('lesen '):
-            item = cmd[6:].strip()
-        
-        read_item(item)
-        if item == 'tagebuch':
-            add_to_history("Im Tagebuch hast du deine letzen 2 Jahre in diesem haus Dokumentiert.")
-            add_to_history("Jeder einzelne zombie oder Mensch der versuchte reinzukommen.")
-        elif item == 'Stück Papier':
-            add_to_history("Ein stück Papier, es hat blut schmieren drauf, teile der Notiz dadurch unlesbar.")
-            add_to_history("Sie sind üb....... nirgends ist man sicher. Alles geshah nu........... em Präs......... abor.")
-    
-    elif cmd in ['inventar', 'inv', 'i']:
-        add_to_history("INVENTAR")
-        add_to_history("")
-        
-        if player_inventory:
-            item_names = [get_item_name(it) for it in player_inventory]
-            add_to_history(f"Items: {', '.join(item_names)}")
-        else:
-            add_to_history("Items: Leer")
-        
-        if player_stats['equipped_weapon']:
-            weapon = weapons[player_stats['equipped_weapon']]
-            add_to_history(f"Waffe: {weapon['name']}")
-        else:
-            add_to_history("Waffe: Keine")
-        
-        # Fäuste Level anzeigen (qualitativ)
-        fist_level = player_stats['fist_level']
-        if fist_level >= 5:
-            add_to_history("Fäuste: Meisterhaft")
-        elif fist_level >= 3:
-            add_to_history("Fäuste: Erfahren")
-        else:
-            add_to_history("Fäuste: Untrainiert")
-        
-        # Qualitative Zustandsanzeige
-        add_to_history("")
-        add_to_history(get_health_description())
-        enc = get_encumbrance_description()
-        if enc:
-            add_to_history(enc)
-        add_to_history("")
-        
-    elif cmd.startswith('esse ') or cmd.startswith('iss '):
-        # Esse-Befehl: Essen/Trinken konsumieren (Zork-inspiriert)
-        if cmd.startswith('esse '):
-            item = cmd[5:].strip()
-        else:
-            item = cmd[4:].strip()
-        
-        if item not in player_inventory:
-            add_to_history(f"Du hast kein '{item}' im Inventar.")
-            add_to_history("")
-        elif item not in food_items:
-            add_to_history(f"'{item}' kann man nicht essen.")
-            add_to_history("")
-        else:
-            food = food_items[item]
-            old_hp = player_stats['health']
-            player_stats['health'] = min(100, player_stats['health'] + food['heal'])
-            healed = player_stats['health'] - old_hp
-            player_inventory.remove(item)
-            # Reset hunger and boost strength
-            player_stats['hunger'] = max(0, player_stats['hunger'] - 30)
-            player_stats['turns_since_last_meal'] = 0
-            player_stats['strength'] = min(100, player_stats['strength'] + food['heal'] // 2)
-            
-            add_to_history(food['message'])
-            if healed > 0:
-                if healed >= 30:
-                    add_to_history("Du fühlst dich deutlich besser.")
-                elif healed >= 15:
-                    add_to_history("Etwas Kraft kehrt in deinen Körper zurück.")
-                else:
-                    add_to_history("Du fühlst dich ein wenig gestärkt.")
-            else:
-                add_to_history("Du bist bereits in guter Verfassung.")
-            if player_stats['hunger'] <= 0:
-                add_to_history("Dein Hunger ist gestillt.")
-            add_to_history("")
-    
-    elif cmd in ['schaue', 'look', 'l']:
-        describe_room()
-    
-    elif cmd in ['karte', 'map']:
-        bldg_name, bldg_title, floor = get_room_context(current_room)
-        room_name = rooms.get(current_room, {}).get('name', current_room)
-        
-        add_to_history(">>> STANDORT INFO <<<")
-        add_to_history(f"Gebäude: {bldg_title}")
-        add_to_history(f"Etage:   {floor.capitalize()}")
-        add_to_history(f"Raum:    {room_name}")
-        add_to_history("")
-        add_to_history("Gefundene Ausgänge:")
-        
-        transitions = get_transitions_from(current_room)
-        if not transitions:
-            add_to_history("  (Keine sichtbaren Ausgänge)")
-        else:
-            for d, tgt, t in transitions:
-                tgt_name = rooms.get(tgt, {}).get('name', tgt)
-                t_type = t.get('type', 'passage')
-                lock_str = " [VERSCHLOSSEN]" if t.get('locked') else ""
-                icon = "🚪" if t_type in ['door', 'entrance'] else "🪜" if t_type == 'stairs' else "➡️"
-                add_to_history(f"  {d.capitalize():<12} {icon} {tgt_name} {lock_str}")
-        
-        add_to_history("")
-    
-    elif cmd.startswith('ausrüsten '):
-        weapon_key = cmd[10:].strip()
-        equip_weapon(weapon_key)
-    
-    elif cmd.startswith('schieße auf ') or cmd.startswith('schiesse auf ') or cmd.startswith('schieße ') or cmd.startswith('schiesse '):
-        # Extrahiere Ziel
-        if 'auf ' in cmd:
-            target = cmd.split('auf ', 1)[1].strip()
-        else:
-            target = cmd.split('schieße ', 1)[1].strip() if 'schieße ' in cmd else cmd.split('schiesse ', 1)[1].strip()
-        
-        # Spezialfall: Schießen ohne Waffe im ersten Raum
-        room = rooms[current_room]
-        if current_room == 'start' and room.get('enemy') == 'zombie' and not player_stats['equipped_weapon']:
-            add_to_history("Du hast keine Waffe!")
-            add_to_history("Du versuchst wild um dich zu schlagen...")
-            add_to_history("")
-            
-            # 30% Chance zu sterben
-            if random.random() < 0.3:
-                add_to_history("Der Zombie ist schneller!")
-                add_to_history("Tentakel durchbohren deine Brust.")
-                add_to_history("Schwärze übernimmt deine Vision...")
-                add_to_history("")
-                add_to_history("=== DU BIST GESTORBEN ===")
-                add_to_history("")
-                player_stats['health'] = 0
-                # Reset Player Stats
-                player_stats['health'] = 100
-                player_stats['strength'] = 100
-                player_stats['hunger'] = 0
-                player_stats['turns_since_last_meal'] = 0
-                player_stats['last_recovery_turn'] = 0
-                player_stats['equipped_weapon'] = None
-                player_stats['weapon_type'] = None
-                player_stats['in_combat'] = False
-                player_stats['fist_level'] = 1
-                
-                # Reset Enemies
-                for enemy_key in enemies:
-                    enemies[enemy_key]['health'] = enemies[enemy_key]['max_health']
-                
-                # Reset Rooms
-                rooms['start']['first_visit'] = True
-                rooms['start']['enemy'] = 'zombie'
-                rooms['start']['items'] = ['feuerlöscher', 'zeitung']
-                reset_transitions()
-                
-                start_game()
-            else:
-                add_to_history("Du stolperst zurück und weichst aus!")
-                add_to_history("Schnell, nimm eine Waffe!")
-            add_to_history("")
-        else:
-            ranged_attack(target)
-    
-    elif cmd.startswith('schlag ') or cmd.startswith('schlage '):
-        # Prüfe ob "mit" im Befehl ist
-        if ' mit ' in cmd:
-            # Format: "schlag [ziel] mit [waffe]"
-            parts = cmd.split(' ', 1)[1]  # Entferne "schlag"/"schlage"
-            target_and_weapon = parts.split(' mit ')
-            if len(target_and_weapon) == 2:
-                target = target_and_weapon[0].strip()
-                weapon_name = target_and_weapon[1].strip()
-                # Ziel-Validierung
-                room = rooms[current_room]
-                enemy_in_room = room.get('enemy', None)
-                if not enemy_in_room:
-                    add_to_history("Es gibt hier nichts zum Angreifen!")
-                    add_to_history("")
-                else:
-                    enemy = enemies.get(enemy_in_room)
-                    t = target.lower().strip()
-                    enemy_words = [enemy_in_room] + enemy['name'].lower().replace('-', ' ').split()
-                    if t == enemy_in_room or t in enemy_words:
-                        attack_with_weapon(target, weapon_name)
-                    else:
-                        add_to_history(f"Hier ist kein '{target}'.")
-                        if enemy:
-                            add_to_history(f"Hier ist: {enemy['name']}")
-                        add_to_history("")
-            else:
-                add_to_history("Falsches Format. Nutze: schlag [ziel] mit [waffe]")
-                add_to_history("")
-        else:
-            target = cmd.split(' ', 1)[1].strip()
-            # Ziel-Validierung
-            room = rooms[current_room]
-            enemy_in_room = room.get('enemy', None)
-            if not enemy_in_room:
-                add_to_history("Es gibt hier nichts zum Angreifen!")
-                add_to_history("")
-            else:
-                enemy = enemies.get(enemy_in_room)
-                t = target.lower().strip()
-                enemy_words = [enemy_in_room] + enemy['name'].lower().replace('-', ' ').split()
-                if t == enemy_in_room or t in enemy_words:
-                    unarmed_attack(target)
-                else:
-                    add_to_history(f"Hier ist kein '{target}'.")
-                    if enemy:
-                        add_to_history(f"Hier ist: {enemy['name']}")
-                    add_to_history("")
-    
-    elif cmd == 'clear' or cmd == 'cls':
-        game_history.clear()
-        add_to_history("Terminal geleert.")
-        add_to_history("")
-    
-    # status/stats removed — use 'diagnose' or 'd' instead
-    
-    elif cmd.startswith('stich auf '):
-        target = cmd[10:].strip()
-        melee_attack(target)
-    
-    # Terminal-Befehle
-    elif cmd == 'neu':
-        # Neues Spiel starten - setzt alles zurück
-        # Reset Player Stats
-        player_stats['health'] = 100
-        player_stats['strength'] = 100
-        player_stats['hunger'] = 0
-        player_stats['turns_since_last_meal'] = 0
-        player_stats['last_recovery_turn'] = 0
-        player_stats['equipped_weapon'] = None
-        player_stats['weapon_type'] = None
-        player_stats['in_combat'] = False
-        player_stats['fist_level'] = 1
-        
-        # Reset Enemies
-        for enemy_key in enemies:
-            enemies[enemy_key]['health'] = enemies[enemy_key]['max_health']
-        
-        # Reset Light charges
-        for idef in ITEM_DEFS.values():
-            if idef.max_charge >= 0:
-                idef.charge = idef.max_charge
-        
-        # Reset Rooms
-        rooms['start']['first_visit'] = True
-        rooms['start']['enemy'] = 'zombie'
-        rooms['start']['items'] = ['feuerlöscher', 'zeitung']
-        reset_transitions()
-        
-        start_game()
-    
-    
-    elif cmd.startswith('echo '):
-        text = cmd[5:].strip()
-        add_to_history(text)
-        add_to_history("")
-    
-    elif cmd == 'time':
-        now = datetime.datetime.now()
-        add_to_history(f"Aktuelle Zeit: {now.strftime('%H:%M:%S')}")
-        add_to_history(f"Datum: {now.strftime('%d.%m.%Y')}")
-        add_to_history("")
-    
-    elif cmd == 'whoami':
-        add_to_history("Name: Albert Wesker Cristal")
-        add_to_history("Status: Überlebender")
-        add_to_history("Standort: Bunker")
-        add_to_history("")
-    
-    elif cmd in ['karte', 'map']:
-        bldg_name, bldg_title, floor = get_room_context(current_room)
-        room_name = rooms.get(current_room, {}).get('name', current_room)
-        
-        add_to_history(">>> STANDORT INFO <<<")
-        add_to_history(f"Gebäude: {bldg_title}")
-        add_to_history(f"Etage:   {floor.capitalize()}")
-        add_to_history(f"Raum:    {room_name}")
-        add_to_history("")
-        add_to_history("Gefundene Ausgänge:")
-        
-        transitions = get_transitions_from(current_room)
-        if not transitions:
-            add_to_history("  (Keine sichtbaren Ausgänge)")
-        else:
-            for d, tgt, t in transitions:
-                tgt_name = rooms.get(tgt, {}).get('name', tgt)
-                t_type = t.get('type', 'passage')
-                lock_str = " [VERSCHLOSSEN]" if t.get('locked') else ""
-                icon = "🚪" if t_type in ['door', 'entrance'] else "🪜" if t_type == 'stairs' else "➡️"
-                add_to_history(f"  {d.capitalize():<12} {icon} {tgt_name} {lock_str}")
-        
-        add_to_history("")
-    
-    elif cmd in ['schieben', 'schieb', 'regal schieben', 'schrank schieben', 'bücherregal schieben']:
-        global bibliothek_4_schrank_geschoben
-        if current_room == 'bibliothek_3':
-            if not bibliothek_4_schrank_geschoben:
-                bibliothek_4_schrank_geschoben = True
-                unlock_transition('bib_3_4')
-                add_to_history("Du stemmst dich gegen das schwere Bücherregal...")
-                add_to_history("Mit aller Kraft schiebst du es zur Seite!")
-                add_to_history("Der Weg nach NORDEN ist jetzt frei.")
-                add_to_history("")
-            else:
-                add_to_history("Das Bücherregal wurde bereits zur Seite geschoben.")
-                add_to_history("")
-        else:
-            add_to_history("Hier gibt es nichts zum Schieben.")#Haustür
-            add_to_history("") 
-
-    elif cmd in ['Brech auf', 'Zerhacke tür', 'schlage tür auf', 'tür aufbrechen', 'tür mit Axt aufschalgen']:
-        global haus1_tür_auf
-        if current_room == 'haus1' and 'axt' in player_inventory:
-            if not haus1_tür_auf:
-                haus1_tür_auf = True
-                unlock_transition('haus1_tuer')
-                add_to_history("Du nimmst die Axt in die Hände")
-                add_to_history("Mit wucht schlägst du mit der Axt auf die Tür ein")
-                add_to_history("Man kann nun ins Haus rein")
-                add_to_history("")
-            else:
-                add_to_history("Die Tür ist bereits aufgebrochen")
-                add_to_history("")
-        else:
-            add_to_history("Du hast nichts um die Tür zu öffnen.")
-            add_to_history("")
-    
-    # === CONTAINER-BEFEHLE ===
-    elif cmd.startswith('öffne ') or cmd.startswith('oeffne '):
-        target = cmd.split(' ', 1)[1].strip()[:9]
-        handle_container_open(target)
-    
-    elif cmd.startswith('schließ') or cmd.startswith('schliess'):
-        parts = cmd.split(' ', 1)
-        if len(parts) > 1:
-            target = parts[1].strip()[:9]
-            handle_container_close(target)
-        else:
-            add_to_history("Was willst du schließen?")
-            add_to_history("")
-    
-    elif ' in ' in cmd and cmd.startswith('lege '):
-        # lege X in Y
-        rest = cmd[5:].strip()
-        parts = rest.split(' in ', 1)
-        if len(parts) == 2:
-            handle_put_in(parts[0].strip(), parts[1].strip())
-        else:
-            add_to_history("Format: lege [item] in [behälter]")
-            add_to_history("")
-    
-    elif ' aus ' in cmd and cmd.startswith('nimm '):
-        # nimm X aus Y
-        rest = cmd[5:].strip()
-        parts = rest.split(' aus ', 1)
-        if len(parts) == 2:
-            handle_take_from(parts[0].strip(), parts[1].strip())
-        else:
-            add_to_history("Format: nimm [item] aus [behälter]")
-            add_to_history("")
-    
-    elif cmd.startswith('schaue in ') or cmd.startswith('schau in '):
-        target = cmd.split(' in ', 1)[1].strip()
-        handle_look_in(target)
-    
-    # === VIEW MODE BEFEHLE ===
-    elif cmd in ['verbose', 'ausführl', 'ausführli']:
-        view_mode = 'verbose'
-        add_to_history("Modus: VERBOSE – Volle Beschreibungen.")
-        add_to_history("")
-    
-    elif cmd in ['brief', 'kurz']:
-        view_mode = 'brief'
-        add_to_history("Modus: BRIEF – Kurze Beschreibungen bei Wiederbesuch.")
-        add_to_history("")
-    
-    elif cmd in ['superbrie', 'superkur', 'superkurz']:
-        view_mode = 'superbrief'
-        add_to_history("Modus: SUPERBRIEF – Nur Raumnamen.")
-        add_to_history("")
-    
-    # === SYSTEM-BEFEHLE ===
-    elif cmd == 'info':
-        add_to_history("═══════════════════════════════")
-        add_to_history("  DEAD WORLD v1.0")
-        add_to_history("  Ein Zork-inspiriertes")
-        add_to_history("  Survival Text-Adventure")
-        add_to_history("  mit Pygame Terminal-UI")
-        add_to_history("═══════════════════════════════")
-        add_to_history(f"  Züge: {game_moves}")
-        add_to_history(f"  Punkte: {game_score}")
-        add_to_history(f"  Spielzeit: {format_elapsed_time()}")
-        add_to_history("")
-    
-    elif cmd in ['q', 'quit', 'beenden']:
-        add_to_history("═══ SPIELENDE ═══")
-        add_to_history(f"Punkte: {game_score}")
-        add_to_history(f"Züge: {game_moves}")
-        add_to_history(f"Spielzeit: {format_elapsed_time()}")
-        add_to_history("")
-        add_to_history("Willst du wirklich beenden? (Tippe 'neu' für Neustart)")
-        add_to_history("")
-    
-    elif cmd in ['save', 'speicher', 'speichern']:
-        save_game()
-    
-    elif cmd in ['restore', 'laden']:
-        restore_game()
-    
-    elif cmd in ['score', 'punkte']:
-        add_to_history(f"Punkte: {game_score}")
-        add_to_history(f"Züge: {game_moves}")
-        add_to_history("")
-    
-    elif cmd in ['zeit']:
-        add_to_history(f"Spielzeit: {format_elapsed_time()}")
-        ticks_total = pygame.time.get_ticks() - game_start_ticks
-        add_to_history(f"Pygame Ticks: {ticks_total}")
-        add_to_history("")
-    
-    elif cmd in ['diagnose', 'd']:
-        add_to_history("═══ DIAGNOSE ═══")
-        add_to_history(get_health_description())
-        add_to_history(get_strength_description())
-        hunger_desc = get_hunger_description()
-        if hunger_desc:
-            add_to_history(hunger_desc)
-        if player_stats['equipped_weapon']:
-            w = weapons[player_stats['equipped_weapon']]
-            add_to_history(f"Waffe: {w['name']}")
-        else:
-            add_to_history("Waffe: Keine")
-        add_to_history(f"Kampfstatus: {'IM KAMPF' if player_stats['in_combat'] else 'Sicher'}")
-        enc = get_encumbrance_description()
-        if enc:
-            add_to_history(enc)
-        # Light status
-        for litem in player_inventory:
-            lidef = ITEM_DEFS.get(litem)
-            if lidef and lidef.max_charge >= 0:
-                if lidef.charge <= 0:
-                    add_to_history(f"{lidef.name}: Erloschen")
-                elif lidef.charge <= 20:
-                    add_to_history(f"{lidef.name}: Schwaches Licht")
-                else:
-                    add_to_history(f"{lidef.name}: Leuchtet")
-        add_to_history("")
-    
-    else:
-        # === REACTIVE PARSER ===
-        verb = words[0] if words else ''
-        obj = ' '.join(words[1:]) if len(words) > 1 else ''
-        room = rooms[current_room]
-        all_known_items = set(ITEM_DEFS.keys())
-        room_items = set(room.get('items', []))
-        inv_items = set(player_inventory)
-        
-        # 1) Verb braucht Objekt aber keins angegeben -> fragen
-        if verb in VERBS_NEED_OBJECT and not obj:
-            infinitiv = VERBS_NEED_OBJECT[verb]
-            add_to_history(f"Was willst du {infinitiv}?")
-            pending_ambiguity = {'action': verb, 'candidates': list(room_items | inv_items), 'original_cmd': verb}
-            add_to_history("")
-            return
-        
-        # 2) Logisch unmögliche Aktionen
-        if verb in ('esse', 'iss') and obj:
-            if obj in weapons:
-                add_to_history(random.choice(ILLOGICAL_RESPONSES['eat_weapon']))
-                add_to_history("")
-                return
-            if obj in all_known_items and obj not in food_items:
-                add_to_history(random.choice(ILLOGICAL_RESPONSES['eat_inedible']))
-                add_to_history("")
-                return
-        if verb in ('ausrüsten',) and obj:
-            if obj in food_items:
-                add_to_history(random.choice(ILLOGICAL_RESPONSES['equip_food']))
-                add_to_history("")
-                return
-            if obj in all_known_items and obj not in weapons:
-                add_to_history(random.choice(ILLOGICAL_RESPONSES['equip_non_weapon']))
-                add_to_history("")
-                return
-        
-        # 3) Objekt existiert im Spiel aber nicht hier
-        if obj and obj in all_known_items:
-            if obj not in room_items and obj not in inv_items:
-                add_to_history(f"Du siehst hier kein '{get_item_name(obj)}'.")
-                add_to_history("")
-                return
-        
-        # 4) Partielle Objekterkennung / Disambiguation
-        if obj:
-            available = list(room_items | inv_items)
-            matches = [it for it in available if obj in it or it.startswith(obj)]
-            if len(matches) == 1 and verb in VERBS_NEED_OBJECT:
-                process_command(f"{verb} {matches[0]}")
-                return
-            elif len(matches) > 1:
-                add_to_history(f"Was meinst du?")
-                for idx, m in enumerate(matches, 1):
-                    add_to_history(f"  {idx}. {get_item_name(m)}")
-                pending_ambiguity = {'action': verb, 'candidates': matches, 'original_cmd': cmd}
-                add_to_history("")
-                return
-        
-        # 5) Unbekanntes Verb
-        if verb and verb[:9] not in KNOWN_VERBS:
-            resp = random.choice(UNKNOWN_VERB_RESPONSES).format(verb=verb)
-            add_to_history(resp)
-            add_to_history("")
-        else:
-            add_to_history("Unbekannter Befehl. Tippe 'hilfe' für Befehle.")
-            add_to_history("")
+    # === DISPATCHER — delegiert an command_handlers.py ===
+    if command_handlers.handle_help(cmd): return
+    if command_handlers.handle_movement(cmd): return
+    if command_handlers.handle_item_commands(cmd): return
+    if command_handlers.handle_look_map(cmd): return
+    if command_handlers.handle_combat_commands(cmd): return
+    if command_handlers.handle_container_commands(cmd): return
+    if command_handlers.handle_interaction_commands(cmd): return
+    if command_handlers.handle_system_commands(cmd): return
+    command_handlers.handle_unknown_command(cmd, words)
 
 def equip_weapon(weapon_key):
     """Rüste eine Waffe aus"""
@@ -4529,79 +3698,41 @@ options_buttons = [
 ]
 
 def main():
-    global current_state, input_text, backspace_held, last_backspace_time, history_index, scroll_offset, max_scroll, menu_selected_index, cursor_position, map_camera_x, map_camera_y, map_zoom, map_cursor_room, map_dragging, map_drag_last_pos, options_selected_index
-    global delete_held, last_delete_time, left_held, last_left_time, right_held, last_right_time
-    global enter_held, last_enter_time
+    global current_state, input_text, scroll_offset, max_scroll, menu_selected_index, cursor_position
+    global map_camera_x, map_camera_y, map_zoom, map_cursor_room, map_dragging, map_drag_last_pos
+    global options_selected_index
     global node_dragging, node_drag_key, node_hovered_key
-    global building_dragging, building_drag_key, building_drag_start, building_drag_offsets
-    global selected_block_idx, block_resizing, block_resize_handle, block_moving, block_move_offset, block_naming, block_name_input, custom_blocks
+    global building_dragging, building_drag_key
+    global selected_block_idx, block_resizing, block_resize_handle, block_moving, custom_blocks
     
     running = True
     start_time = pygame.time.get_ticks()
-    
-    # Musik wird erst beim Wechsel ins Menü gestartet (nicht im Intro)
     
     while running:
         current_time = pygame.time.get_ticks() - start_time
         current_ms = pygame.time.get_ticks()
         
-        # Key-Repeat-Logik für Terminal-Eingabe
-        if prolog_shown and not qte_active and current_state == GAME:
-            # Backspace-Repeat
-            if backspace_held:
-                if current_ms - last_backspace_time > backspace_repeat_delay:
-                    if cursor_position > 0:
-                        input_text = input_text[:cursor_position-1] + input_text[cursor_position:]
-                        cursor_position -= 1
-                    last_backspace_time = current_ms
-            
-            # Delete-Repeat
-            if delete_held:
-                if current_ms - last_delete_time > key_repeat_delay:
-                    if cursor_position < len(input_text):
-                        input_text = input_text[:cursor_position] + input_text[cursor_position+1:]
-                    last_delete_time = current_ms
-            
-            # Links-Repeat
-            if left_held:
-                if current_ms - last_left_time > key_repeat_delay:
-                    if cursor_position > 0:
-                        cursor_position -= 1
-                    last_left_time = current_ms
-            
-            # Rechts-Repeat
-            if right_held:
-                if current_ms - last_right_time > key_repeat_delay:
-                    if cursor_position < len(input_text):
-                        cursor_position += 1
-                    last_right_time = current_ms
-        
-        # Enter-Repeat (funktioniert sowohl im Prolog als auch im Spiel)
-        if enter_held and current_state == GAME:
-            if current_ms - last_enter_time > key_repeat_delay:
-                if not prolog_shown:
-                    process_command("")
-                last_enter_time = current_ms
+        # Key-Repeat-Logik
+        event_handlers.handle_key_repeats(current_ms)
         
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
             
-            # Mausrad für Scrollen (GAME) / Zoom (MAP)
-            if event.type == pygame.MOUSEWHEEL:
+            # Mausrad: Scrollen (GAME) / Zoom (MAP)
+            elif event.type == pygame.MOUSEWHEEL:
                 if current_state == GAME and prolog_shown:
-                    scroll_offset += event.y * 3  # Invertiert: nach oben scrollen = höherer offset
-                    # Begrenze Scroll
+                    scroll_offset += event.y * 3
                     scroll_offset = max(0, min(scroll_offset, max_scroll))
                 elif current_state == MAP:
                     map_zoom = max(0.3, min(3.0, map_zoom + event.y * 0.12))
             
-            if event.type == pygame.KEYDOWN:
-                # F11 für Fullscreen
+            elif event.type == pygame.KEYDOWN:
+                # F11 Fullscreen (global)
                 if event.key == pygame.K_F11:
                     toggle_fullscreen()
                 
-                # ESC
+                # ESC (global)
                 elif event.key == pygame.K_ESCAPE:
                     if current_state == MENU:
                         running = False
@@ -4617,275 +3748,28 @@ def main():
                     else:
                         current_state = MENU
                         _start_menu_music()
-                        
-                # Map-Steuerung (Graph View Panning)
-                elif current_state == MAP:
-                    if block_naming:
-                        # Text input for block name
-                        if event.key == pygame.K_RETURN or event.key == pygame.K_ESCAPE or event.key == pygame.K_F12:
-                            if selected_block_idx is not None and selected_block_idx < len(custom_blocks):
-                                custom_blocks[selected_block_idx]['name'] = block_name_input
-                            block_naming = False
-                        elif event.key == pygame.K_BACKSPACE:
-                            block_name_input = block_name_input[:-1]
-                        elif event.unicode.isprintable() and len(block_name_input) < 30:
-                            block_name_input += event.unicode
-                        continue  # Skip other MAP key handling while naming
-                    
-                    if event.key == pygame.K_UP:
-                        map_camera_y -= 50 / map_zoom
-                    elif event.key == pygame.K_DOWN:
-                        map_camera_y += 50 / map_zoom
-                    elif event.key == pygame.K_LEFT:
-                        map_camera_x -= 50 / map_zoom
-                    elif event.key == pygame.K_RIGHT:
-                        map_camera_x += 50 / map_zoom
-                    elif event.key in [pygame.K_PLUS, pygame.K_KP_PLUS, pygame.K_EQUALS]:
-                        map_zoom = min(3.0, map_zoom + 0.15)
-                    elif event.key in [pygame.K_MINUS, pygame.K_KP_MINUS]:
-                        map_zoom = max(0.3, map_zoom - 0.15)
-                    elif event.key == pygame.K_m or event.key == pygame.K_ESCAPE:
-                        current_state = GAME
-                        map_dragging = False
-                        node_dragging = False
-                        node_drag_key = None
-                        building_dragging = False
-                        building_drag_key = None
-                    elif event.key == pygame.K_r:
-                        map_camera_x = 0
-                        map_camera_y = 0
-                        map_zoom = 1.0
-                    elif event.key == pygame.K_s:
-                        # Save custom map layout
-                        save_map_layout()
-                        draw_map._save_msg_time = pygame.time.get_ticks()
-                    elif event.key == pygame.K_n:
-                        # Create new custom block at viewport center
-                        gcx = map_camera_x / 50
-                        gcy = map_camera_y / 50
-                        new_block = {
-                            'name': f'Block {len(custom_blocks)+1}',
-                            'gx': gcx - 2, 'gy': gcy - 2,
-                            'gw': 4, 'gh': 4,
-                            'color': [random.randint(40,120), random.randint(40,120), random.randint(40,120)]
-                        }
-                        custom_blocks.append(new_block)
-                        selected_block_idx = len(custom_blocks) - 1
-                    elif event.key == pygame.K_F12:
-                        # Rename selected block
-                        if selected_block_idx is not None and selected_block_idx < len(custom_blocks):
-                            block_naming = True
-                            block_name_input = custom_blocks[selected_block_idx]['name']
-                    elif event.key == pygame.K_DELETE or event.key == pygame.K_x:
-                        # Delete selected block
-                        print(f"[MAP] Delete pressed! selected_block_idx={selected_block_idx}, blocks={len(custom_blocks)}")
-                        if selected_block_idx is not None and selected_block_idx < len(custom_blocks):
-                            custom_blocks.pop(selected_block_idx)
-                            selected_block_idx = None
-                            block_resizing = False
-                            block_moving = False
-                            print("[MAP] Block deleted!")
-                        else:
-                            print("[MAP] No block selected to delete")
                 
-                # Space im Intro
+                # State-spezifische Keydown-Handler
+                elif current_state == MAP:
+                    consumed = event_handlers.handle_keydown_map(event)
+                    if consumed:
+                        continue
                 elif event.key == pygame.K_SPACE and current_state == INTRO:
                     current_state = MENU
                     _start_menu_music()
-                
-                # Tastaturnavigation im Hauptmenü
                 elif current_state == MENU:
-                    if event.key == pygame.K_UP:
-                        menu_selected_index = (menu_selected_index - 1) % len(menu_buttons)
-                    elif event.key == pygame.K_DOWN:
-                        menu_selected_index = (menu_selected_index + 1) % len(menu_buttons)
-                    elif event.key == pygame.K_RETURN:
-                        menu_buttons[menu_selected_index].action()
-                
-                # Pfeiltasten im Options-Menü
+                    event_handlers.handle_keydown_menu(event)
                 elif current_state == OPTIONS:
-                    if event.key == pygame.K_UP:
-                        options_selected_index = (options_selected_index - 1) % 3
-                    elif event.key == pygame.K_DOWN:
-                        options_selected_index = (options_selected_index + 1) % 3
-                    elif event.key == pygame.K_LEFT:
-                        if options_selected_index == 0:
-                            change_resolution(-1)
-                        elif options_selected_index == 1:
-                            game_settings['music_volume'] = max(0.0, round(game_settings['music_volume'] - 0.05, 2))
-                            pygame.mixer.music.set_volume(game_settings['music_volume'])
-                        elif options_selected_index == 2:
-                            game_settings['sfx_volume'] = max(0.0, round(game_settings['sfx_volume'] - 0.05, 2))
-                    elif event.key == pygame.K_RIGHT:
-                        if options_selected_index == 0:
-                            change_resolution(1)
-                        elif options_selected_index == 1:
-                            game_settings['music_volume'] = min(1.0, round(game_settings['music_volume'] + 0.05, 2))
-                            pygame.mixer.music.set_volume(game_settings['music_volume'])
-                        elif options_selected_index == 2:
-                            game_settings['sfx_volume'] = min(1.0, round(game_settings['sfx_volume'] + 0.05, 2))
-                
-                # Text-Eingabe im Spiel
+                    event_handlers.handle_keydown_options(event)
                 elif current_state == GAME:
-                    if event.key == pygame.K_RETURN:
-                        if not prolog_shown:
-                            # Im Prolog: Enter zeigt mehr Text
-                            process_command("")
-                        elif input_text.strip().lower() in ["karte", "map"] and prolog_shown:
-                            current_state = MAP
-                            map_camera_x = 0
-                            map_camera_y = 0
-                            map_dragging = False
-                            input_text = ""
-                            cursor_position = 0
-                        elif input_text.strip():
-                            # Comma-Split: mehrere Befehle auf einer Zeile
-                            raw_cmds = input_text.split(',')
-                            for sub_cmd in raw_cmds:
-                                sub_cmd = sub_cmd.strip()
-                                if sub_cmd:
-                                    add_to_history(f"> {sub_cmd}")
-                                    process_command(sub_cmd)
-                            input_text = ""
-                            cursor_position = 0
-                            history_index = -1
-                        enter_held = True
-                        last_enter_time = pygame.time.get_ticks() + key_initial_delay
-                    
-                    elif event.key == pygame.K_BACKSPACE and not qte_active:
-                        if cursor_position > 0:
-                            input_text = input_text[:cursor_position-1] + input_text[cursor_position:]
-                            cursor_position -= 1
-                        backspace_held = True
-                        last_backspace_time = pygame.time.get_ticks() + backspace_initial_delay
-                    
-                    # Delete-Taste: Löscht Zeichen nach dem Cursor
-                    elif event.key == pygame.K_DELETE and not qte_active:
-                        if cursor_position < len(input_text):
-                            input_text = input_text[:cursor_position] + input_text[cursor_position+1:]
-                        delete_held = True
-                        last_delete_time = pygame.time.get_ticks() + key_initial_delay
-                    
-                    # Links/Rechts-Pfeiltasten für Cursor-Navigation
-                    elif event.key == pygame.K_LEFT and prolog_shown and not qte_active:
-                        if cursor_position > 0:
-                            cursor_position -= 1
-                        left_held = True
-                        last_left_time = pygame.time.get_ticks() + key_initial_delay
-                    
-                    elif event.key == pygame.K_RIGHT and prolog_shown and not qte_active:
-                        if cursor_position < len(input_text):
-                            cursor_position += 1
-                        right_held = True
-                        last_right_time = pygame.time.get_ticks() + key_initial_delay
-                    
-                    # Page Up / Page Down für Scrollen
-                    elif event.key == pygame.K_PAGEUP and prolog_shown and not qte_active:
-                        scroll_offset -= 10  # Invertiert
-                        scroll_offset = max(0, scroll_offset)
-                    
-                    elif event.key == pygame.K_PAGEDOWN and prolog_shown and not qte_active:
-                        scroll_offset += 10  # Invertiert
-                        scroll_offset = min(scroll_offset, max_scroll)
-                    
-                    # Pos1 / Ende für schnelles Scrollen
-                    elif event.key == pygame.K_HOME and prolog_shown and not qte_active:
-                        scroll_offset = 0  # Invertiert: Anfang
-                    
-                    elif event.key == pygame.K_END and prolog_shown and not qte_active:
-                        scroll_offset = max_scroll  # Invertiert: Ende
-                    
-                    # Pfeiltasten für Command History (nur wenn nicht gescrollt)
-                    elif event.key == pygame.K_UP and prolog_shown and not qte_active:
-                        if scroll_offset == 0:  # Nur bei nicht-gescrolltem Terminal
-                            if command_history:
-                                if history_index == -1:
-                                    history_index = len(command_history) - 1
-                                elif history_index > 0:
-                                    history_index -= 1
-                                
-                                if 0 <= history_index < len(command_history):
-                                    input_text = command_history[history_index]
-                                    cursor_position = len(input_text)
-                        else:
-                            # Wenn gescrollt: Scroll hoch (invertiert: weniger offset)
-                            scroll_offset -= 3
-                            scroll_offset = max(0, scroll_offset)
-                    
-                    elif event.key == pygame.K_DOWN and prolog_shown and not qte_active:
-                        if scroll_offset == 0:  # Nur bei nicht-gescrolltem Terminal
-                            if command_history and history_index != -1:
-                                history_index += 1
-                                
-                                if history_index >= len(command_history):
-                                    history_index = -1
-                                    input_text = ""
-                                    cursor_position = 0
-                                else:
-                                    input_text = command_history[history_index]
-                                    cursor_position = len(input_text)
-                        else:
-                            # Wenn gescrollt: Scroll runter (invertiert: mehr offset)
-                            scroll_offset += 3
-                            scroll_offset = min(scroll_offset, max_scroll)
-                    
-                    else:
-                        # QTE Mode: Einzelne Tasten W, A, S, D, E
-                        if qte_active and event.unicode.upper() in ['W', 'A', 'S', 'D', 'E']:
-                            process_command(event.unicode.upper())
-                            check_qte_result()
-                        # Normaler Input
-                        elif prolog_shown and not qte_active and len(input_text) < 60 and event.unicode.isprintable():
-                            # Füge Zeichen an Cursor-Position ein
-                            input_text = input_text[:cursor_position] + event.unicode + input_text[cursor_position:]
-                            cursor_position += 1
+                    event_handlers.handle_keydown_game(event)
             
             elif event.type == pygame.KEYUP:
-                if event.key == pygame.K_BACKSPACE:
-                    backspace_held = False
-                elif event.key == pygame.K_DELETE:
-                    delete_held = False
-                elif event.key == pygame.K_LEFT:
-                    left_held = False
-                elif event.key == pygame.K_RIGHT:
-                    right_held = False
-                elif event.key == pygame.K_RETURN:
-                    enter_held = False
+                event_handlers.handle_keyup(event)
             
-            if event.type == pygame.MOUSEBUTTONDOWN:
+            elif event.type == pygame.MOUSEBUTTONDOWN:
                 if current_state == MAP:
-                    UNIT = scale(50) * map_zoom
-                    cx = screen.get_width() / 2 - (map_camera_x * map_zoom * 50)
-                    cy = screen.get_height() / 2 - (map_camera_y * map_zoom * 50)
-                    if event.button == 3:  # Right click = drag node, block, or building
-                        hit = get_node_at_screen_pos(event.pos[0], event.pos[1], UNIT, cx, cy)
-                        if hit:
-                            node_dragging = True
-                            node_drag_key = hit
-                            selected_block_idx = None
-                        else:
-                            # Check custom blocks first
-                            blk_idx, handle = get_block_at_screen_pos(event.pos[0], event.pos[1], UNIT, cx, cy)
-                            if blk_idx is not None:
-                                selected_block_idx = blk_idx
-                                if handle and handle != 'move':  # Resize corner
-                                    block_resizing = True
-                                    block_resize_handle = handle
-                                else:  # Move block (border/title bar)
-                                    block_moving = True
-                                    gx, gy = screen_to_graph(event.pos[0], event.pos[1], UNIT, cx, cy)
-                                    blk = custom_blocks[blk_idx]
-                                    block_move_offset = (blk['gx'] - gx, blk['gy'] - gy)
-                            else:
-                                selected_block_idx = None
-                    elif event.button == 1:  # Left click = select block or pan camera
-                        blk_idx, _ = get_block_at_screen_pos(event.pos[0], event.pos[1], UNIT, cx, cy)
-                        if blk_idx is not None:
-                            selected_block_idx = blk_idx
-                        else:
-                            selected_block_idx = None
-                        map_dragging = True
-                        map_drag_last_pos = event.pos
+                    event_handlers.handle_mouse_map_down(event)
                 elif event.button == 1:
                     if current_state == MENU:
                         for button in menu_buttons:
@@ -4893,8 +3777,8 @@ def main():
                     elif current_state == OPTIONS:
                         for button in options_buttons:
                             button.click()
-                            
-            if event.type == pygame.MOUSEBUTTONUP:
+            
+            elif event.type == pygame.MOUSEBUTTONUP:
                 if event.button == 1:
                     map_dragging = False
                 elif event.button == 3:
@@ -4903,45 +3787,10 @@ def main():
                     block_resizing = False
                     block_resize_handle = None
                     block_moving = False
-                    
-            if event.type == pygame.MOUSEMOTION:
+            
+            elif event.type == pygame.MOUSEMOTION:
                 if current_state == MAP:
-                    UNIT = scale(50) * map_zoom
-                    cx = screen.get_width() / 2 - (map_camera_x * map_zoom * 50)
-                    cy = screen.get_height() / 2 - (map_camera_y * map_zoom * 50)
-                    if node_dragging and node_drag_key:
-                        # Move the node to new graph position
-                        gx, gy = screen_to_graph(event.pos[0], event.pos[1], UNIT, cx, cy)
-                        GRAPH_LAYOUT[node_drag_key] = (gx, gy)
-                    elif block_moving and selected_block_idx is not None:
-                        gx, gy = screen_to_graph(event.pos[0], event.pos[1], UNIT, cx, cy)
-                        custom_blocks[selected_block_idx]['gx'] = gx + block_move_offset[0]
-                        custom_blocks[selected_block_idx]['gy'] = gy + block_move_offset[1]
-                    elif block_resizing and selected_block_idx is not None:
-                        gx, gy = screen_to_graph(event.pos[0], event.pos[1], UNIT, cx, cy)
-                        blk = custom_blocks[selected_block_idx]
-                        if 'r' in block_resize_handle:  # right side
-                            blk['gw'] = max(1, gx - blk['gx'])
-                        if 'b' in block_resize_handle:  # bottom side
-                            blk['gh'] = max(1, gy - blk['gy'])
-                        if 'l' in block_resize_handle:  # left side
-                            new_x = gx
-                            blk['gw'] = max(1, (blk['gx'] + blk['gw']) - new_x)
-                            blk['gx'] = new_x
-                        if 't' in block_resize_handle:  # top side
-                            new_y = gy
-                            blk['gh'] = max(1, (blk['gy'] + blk['gh']) - new_y)
-                            blk['gy'] = new_y
-                    elif map_dragging:
-                        dx = event.pos[0] - map_drag_last_pos[0]
-                        dy = event.pos[1] - map_drag_last_pos[1]
-                        drag_speed = 0.1
-                        map_camera_x -= dx * drag_speed / map_zoom
-                        map_camera_y -= dy * drag_speed / map_zoom
-                        map_drag_last_pos = event.pos
-                    else:
-                        # Hover detection
-                        node_hovered_key = get_node_at_screen_pos(event.pos[0], event.pos[1], UNIT, cx, cy)
+                    event_handlers.handle_mouse_map_motion(event)
         
         # State-basiertes Rendering
         if current_state == INTRO:
@@ -4950,17 +3799,13 @@ def main():
                 current_state = MENU
                 start_time = pygame.time.get_ticks()
                 _start_menu_music()
-        
         elif current_state == MENU:
             draw_menu(current_time)
-        
         elif current_state == OPTIONS:
             draw_options(current_time)
-        
         elif current_state == GAME:
             update_typewriter()
             draw_game(current_time)
-            
         elif current_state == MAP:
             draw_map(current_time)
         
