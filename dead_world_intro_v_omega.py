@@ -2871,6 +2871,17 @@ def process_command(command):
     # === 9-Letter Truncation ===
     words = cmd.split()
     words = [w[:9] for w in words]
+    # Resolve truncated words back to full item/weapon keys (prefix match)
+    room = rooms.get(current_room, {})
+    all_keys = set(ITEM_DEFS.keys()) | set(weapons.keys()) | set(room.get('items', [])) | set(player_inventory)
+    resolved_words = []
+    for w in words:
+        matches = [k for k in all_keys if k[:9] == w and k != w]
+        if len(matches) == 1:
+            resolved_words.append(matches[0])
+        else:
+            resolved_words.append(w)
+    words = resolved_words
     cmd = ' '.join(words)
 
     # === Ambiguity Resolution ===
