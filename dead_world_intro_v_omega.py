@@ -275,14 +275,345 @@ zombie_kill_times = {}  # room_key -> time.time() wann Zombie zuletzt getötet w
 
 player_stats = {   
     'health': 100,
+    'strength': 100,              # Hidden strength (0-100) – never shown as number
+    'hunger': 0,                  # Hidden hunger (0-100) – never shown as number
+    'max_weight': 50,             # Hidden carry capacity
     'equipped_weapon': None,
     'weapon_type': None,  # 'ranged', 'melee', None
     'in_combat': False,
-    'fist_level': 1       # Fäuste Level (1-5), Level-Up durch Black Flash
+    'fist_level': 1,              # Fäuste Level (1-5), Level-Up durch Black Flash
+    'turns_since_last_meal': 0,   # Hunger tick counter
+    'last_recovery_turn': 0,      # Passive recovery tracker
+}
+
+# === CLASSIC MECHANICS: View Mode, Score, Ambiguity ===
+view_mode = 'verbose'           # 'verbose', 'brief', 'superbrief'
+visited_rooms_desc = set()      # Bereits beschriebene Räume (für brief mode)
+game_score = 0                  # Zork-style Punkte
+game_moves = 0                  # Zähler für Spielerzüge
+game_start_ticks = 0            # pygame.time.get_ticks() beim Spielstart
+SAVE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'dead_world_save.json')
+
+# Pending Ambiguity (wenn der Parser fragt "Was meinst du?")
+pending_ambiguity = None        # {'action': str, 'candidates': [...], 'original_cmd': str}
+
+# === ITEM CLASS (Container-System) ===
+class Item:
+    """Gegenstand mit optionaler Container-Logik."""
+    def __init__(self, key, name, description='',
+                 is_container=False, capacity=5,
+                 is_open=True, is_transparent=False,
+                 weight=1, charge=-1):
+        self.key = key
+        self.name = name
+        self.description = description
+        self.is_container = is_container
+        self.capacity = capacity
+        self.is_open = is_open
+        self.is_transparent = is_transparent
+        self.contents = []          # Liste von Item-Keys
+        self.weight = weight        # Gewicht für Encumbrance-System
+        self.charge = charge        # -1 = kein Licht, 0+ = verbleibende Züge
+        self.max_charge = charge    # Original-Ladung für Reset
+
+# Item-Definitionen – Metadaten für jedes bekannte Item
+ITEM_DEFS = {
+    'feuerlöscher': Item('feuerlöscher', 'Feuerlöscher', 'Ein schwerer, roter Feuerlöscher.', weight=8),
+    'zeitung': Item('zeitung', 'Zeitung', 'Eine zerknitterte Zeitung.', weight=1),
+    'schlüssel': Item('schlüssel', 'Schlüssel', 'Ein rostiger Metallschlüssel.', weight=1),
+    'ak': Item('ak', 'AK-47', 'Eine automatische Waffe.', weight=7),
+    'notizen': Item('notizen', 'Notizen', 'Zerknitterte Labornotizen.', weight=1),
+    'fäuste': Item('fäuste', 'Fäuste', 'Deine bloßen Hände.', weight=0),
+    'konserven': Item('konserven', 'Konservendose', 'Eine ungeöffnete Konserve.', weight=2),
+    'medkit': Item('medkit', 'Medkit', 'Ein Erste-Hilfe-Kasten.', weight=3),
+    'schokoriegel': Item('schokoriegel', 'Schokoriegel', 'Ein alter Schokoriegel.', weight=1),
+    'dosenfleisch': Item('dosenfleisch', 'Dosenfleisch', 'Fragwürdig riechend.', weight=2),
+    'wasser': Item('wasser', 'Wasserflasche', 'Eine Flasche Wasser.', weight=2),
+    'energieriegel': Item('energieriegel', 'Energieriegel', 'Kompakt und nahrhaft.', weight=1),
+    'crackers': Item('crackers', 'Crackers', 'Trockene Crackers.', weight=1),
+    'apfel': Item('apfel', 'Apfel', 'Ein schrumpeliger Apfel.', weight=1),
+    'pistole': Item('pistole', 'Pistole', 'Eine halbautomatische Pistole.', weight=3),
+    'küchenmesser': Item('küchenmesser', 'Küchenmesser', 'Ein scharfes Küchenmesser.', weight=2),
+    'kampfmesser': Item('kampfmesser', 'Kampfmesser', 'Ein robustes Kampfmesser.', weight=2),
+    'baseball_schläger': Item('baseball_schläger', 'Baseball Schläger', 'Ein solider Schläger.', weight=4),
+    'axt': Item('axt', 'Axt', 'Eine scharfe Axt.', weight=6),
+    'machete': Item('machete', 'Machete', 'Eine lange Machete.', weight=4),
+    'tagebuch': Item('tagebuch', 'Tagebuch', 'Dein persönliches Tagebuch.', weight=1),
+    'stück papier': Item('stück papier', 'Stück Papier', 'Ein blutiges Stück Papier.', weight=1),
+    'taschenlampe': Item('taschenlampe', 'Taschenlampe', 'Eine Taschenlampe.', weight=2, charge=100),
+    # --- SELTENE CONTAINER ---
+    'rucksack': Item('rucksack', 'Rucksack', 'Ein robuster Militärrucksack.',
+                     is_container=True, capacity=8, is_open=False, is_transparent=False, weight=3),
+    'kiste': Item('kiste', 'Kiste', 'Eine schwere Holzkiste.',
+                  is_container=True, capacity=5, is_open=False, is_transparent=False, weight=10),
+}
+
+def get_item_name(key):
+    """Gibt den Anzeigenamen eines Items zurück."""
+    it = ITEM_DEFS.get(key)
+    return it.name if it else key.capitalize()
+
+# === QUALITATIVE STATUS SYSTEM (Hidden Stats → Descriptive Text) ===
+
+def get_health_description(hp=None):
+    """Gibt eine qualitative Beschreibung des Gesundheitszustands zurück."""
+    if hp is None:
+        hp = player_stats['health']
+    if hp >= 100:
+        return "Du bist in perfekter Verfassung."
+    elif hp >= 80:
+        return "Du hast ein paar Kratzer, nichts Ernstes."
+    elif hp >= 60:
+        return "Du bist leicht verletzt."
+    elif hp >= 40:
+        return "Du bist deutlich angeschlagen."
+    elif hp >= 20:
+        return "Du bist schwer verwundet!"
+    else:
+        return "Du bist dem Tode nahe!"
+
+def get_strength_description(strength=None):
+    """Gibt eine qualitative Beschreibung der Stärke zurück."""
+    if strength is None:
+        strength = player_stats['strength']
+    if strength >= 80:
+        return "Du fühlst dich stark und bereit."
+    elif strength >= 60:
+        return "Du bist etwas erschöpft."
+    elif strength >= 40:
+        return "Deine Kräfte schwinden merklich."
+    elif strength >= 20:
+        return "Du bist am Ende deiner Kräfte!"
+    else:
+        return "Du kannst dich kaum noch auf den Beinen halten!"
+
+def get_hunger_description(hunger=None):
+    """Gibt eine Hungerbeschreibung zurück (oder None wenn noch harmlos)."""
+    if hunger is None:
+        hunger = player_stats['hunger']
+    if hunger >= 80:
+        return "Du fühlst dich schwach vor Hunger!"
+    elif hunger >= 60:
+        return "Du spürst einen nagenden Hunger."
+    elif hunger >= 40:
+        return "Dein Magen knurrt leise."
+    return None
+
+def get_damage_reaction(damage, current_hp):
+    """Gibt eine reaktive Beschreibung zurück wenn der Spieler Schaden nimmt."""
+    if damage >= 25:
+        reactions = [
+            "Ein brutaler Treffer! Du spürst warmes Blut an deiner Seite.",
+            "Der Schmerz durchzuckt deinen ganzen Körper!",
+            "Du taumelst zurück, die Wucht des Schlages raubt dir den Atem.",
+        ]
+    elif damage >= 15:
+        reactions = [
+            "Dieser Schlag hat wehgetan!",
+            "Du beißt die Zähne zusammen. Das wird eine Narbe geben.",
+            "Du spürst deinen Arm taub werden nach dem Treffer.",
+        ]
+    elif damage >= 8:
+        reactions = [
+            "Ein schmerzhafter Treffer, aber du hältst dich.",
+            "Du zuckst zusammen, der Schmerz ist kurz aber heftig.",
+            "Der Schlag tut weh, aber du kannst weiterkämpfen.",
+        ]
+    else:
+        reactions = [
+            "Ein leichter Kratzer, mehr nicht.",
+            "Du spürst kaum etwas — nur ein Kratzen.",
+            "Nur eine Schramme. Du schüttelst es ab.",
+        ]
+    # Add desperation when health is low
+    if current_hp <= 20 and current_hp > 0:
+        return random.choice(reactions) + " Du spürst deine Kräfte schwinden..."
+    return random.choice(reactions)
+
+def get_enemy_damage_reaction(damage, enemy_hp, enemy_max_hp):
+    """Gibt eine Beschreibung des Schadens am Gegner zurück."""
+    hp_ratio = enemy_hp / max(1, enemy_max_hp)
+    if enemy_hp <= 0:
+        return "Er bricht zusammen!"
+    if damage >= 40:
+        return "Ein verheerender Treffer! Der Gegner taumelt schwer."
+    elif damage >= 20:
+        return "Ein solider Treffer. Der Gegner grunzt vor Schmerz."
+    elif damage >= 10:
+        return "Ein ordentlicher Treffer!"
+    else:
+        return "Der Treffer streift ihn gerade so."
+
+def get_enemy_health_description(hp, max_hp):
+    """Gibt eine qualitative Beschreibung der Gegner-Gesundheit zurück."""
+    if hp <= 0:
+        return "Tot"
+    ratio = hp / max(1, max_hp)
+    if ratio >= 0.9:
+        return "Fast unversehrt"
+    elif ratio >= 0.7:
+        return "Leicht verwundet"
+    elif ratio >= 0.5:
+        return "Sichtbar verwundet"
+    elif ratio >= 0.3:
+        return "Schwer verletzt"
+    else:
+        return "Am Rande des Todes"
+
+def get_player_carry_weight():
+    """Berechnet das aktuelle Tragegewicht des Spielers."""
+    total = 0
+    for item_key in player_inventory:
+        idef = ITEM_DEFS.get(item_key)
+        if idef:
+            total += idef.weight
+    return total
+
+def get_encumbrance_description():
+    """Gibt eine qualitative Beschreibung der Traglast zurück."""
+    weight = get_player_carry_weight()
+    max_w = player_stats['max_weight']
+    ratio = weight / max(1, max_w)
+    if ratio >= 1.0:
+        return "Du trägst viel zu viel! Du kannst dich kaum bewegen."
+    elif ratio >= 0.8:
+        return "Dein Gepäck ist schwer. Jeder Schritt kostet Kraft."
+    elif ratio >= 0.5:
+        return "Du trägst einiges mit dir. Noch machbar."
+    else:
+        return None  # Normal — kein Kommentar nötig
+
+def get_light_warning(charge):
+    """Gibt eine Warnung zurück wenn die Lichtquelle schwach ist."""
+    if charge <= 0:
+        return "Deine Taschenlampe erlischt! Die Dunkelheit verschluckt alles."
+    elif charge <= 10:
+        return "Das Licht deiner Taschenlampe wird immer schwächer!"
+    elif charge <= 20:
+        return "Deine Taschenlampe flackert besorgniserregend."
+    return None
+
+def tick_hidden_systems():
+    """Aktualisiert alle versteckten Systeme pro Spielzug. Aufgerufen nach jedem Befehl."""
+    messages = []
+    
+    # --- HUNGER ---
+    player_stats['hunger'] = min(100, player_stats['hunger'] + 1)
+    player_stats['turns_since_last_meal'] += 1
+    
+    # Hunger-Warnungen bei Schwellen
+    hunger = player_stats['hunger']
+    if hunger == 40:
+        messages.append("Dein Magen knurrt leise.")
+    elif hunger == 60:
+        messages.append("Du spürst einen nagenden Hunger.")
+    elif hunger == 80:
+        messages.append("Du fühlst dich schwach vor Hunger!")
+    
+    # Bei extremem Hunger: Stärke reduzieren
+    if hunger > 80:
+        player_stats['strength'] = max(0, player_stats['strength'] - 1)
+    
+    # --- LICHT ---
+    for item_key in player_inventory:
+        idef = ITEM_DEFS.get(item_key)
+        if idef and idef.charge > 0:
+            idef.charge -= 1
+            warning = get_light_warning(idef.charge)
+            if warning:
+                messages.append(warning)
+    
+    # --- PASSIVE RECOVERY ---
+    if not player_stats['in_combat'] and player_stats['hunger'] < 60:
+        turn_diff = game_moves - player_stats['last_recovery_turn']
+        if turn_diff >= 5 and player_stats['health'] < 100:
+            old_hp = player_stats['health']
+            player_stats['health'] = min(100, player_stats['health'] + 2)
+            player_stats['last_recovery_turn'] = game_moves
+            if player_stats['health'] >= 100 and old_hp < 100:
+                messages.append("Du fühlst dich wieder vollständig erholt.")
+            elif player_stats['health'] > old_hp:
+                messages.append("Deine Wunden heilen langsam.")
+    
+    # --- STÄRKE RECOVERY (langsam) ---
+    if player_stats['hunger'] < 40 and player_stats['strength'] < 100:
+        if game_moves % 8 == 0:
+            player_stats['strength'] = min(100, player_stats['strength'] + 1)
+    
+    return messages
+
+# Score-Werte für verschiedene Aktionen
+SCORE_VALUES = {
+    'zombie_kill': 30,
+    'item_pickup': 5,
+    'new_room': 2,
+    'container_found': 10,
+    'move': 0,  # Züge kosten keine Punkte, werden aber gezählt
+}
+
+# === REACTIVE PARSER SYSTEM ===
+# Alle bekannten Verben (für "Unbekanntes Verb" Erkennung)
+KNOWN_VERBS = {
+    'n', 'norden', 'nord', 'o', 'osten', 'ost', 's', 'süden', 'süd', 'sued',
+    'w', 'westen', 'west', 'so', 'südosten', 'nw', 'nordwesten', 'h', 'hoch',
+    'r', 'runter', 'gehe', 'nimm', 'lese', 'lies', 'lesen', 'esse', 'iss',
+    'inventar', 'inv', 'i', 'schaue', 'schau', 'look', 'l', 'karte', 'map',
+    'ausrüsten', 'schieße', 'schiesse', 'schlag', 'schlage', 'stich',
+    'clear', 'cls', 'echo', 'time', 'whoami', 'neu',
+    'hilfe', 'help', 'öffne', 'oeffne', 'schließ', 'schliess', 'lege',
+    'verbose', 'ausführl', 'brief', 'kurz', 'superbrie', 'superkur', 'superkurz',
+    'info', 'q', 'quit', 'beenden', 'save', 'speicher', 'speichern',
+    'restore', 'laden', 'score', 'punkte', 'zeit', 'diagnose', 'd',
+    'schieben', 'schieb', 'brech', 'zerhacke', '?',
+}
+
+# Verben die ein Objekt brauchen
+VERBS_NEED_OBJECT = {
+    'nimm': 'nehmen', 'lese': 'lesen', 'lies': 'lesen', 'lesen': 'lesen',
+    'esse': 'essen', 'iss': 'essen', 'öffne': 'öffnen', 'oeffne': 'öffnen',
+    'ausrüsten': 'ausrüsten', 'lege': 'legen',
+}
+
+# Abwechslungsreiche Antworten für unbekannte Verben (Zork-Stil)
+UNKNOWN_VERB_RESPONSES = [
+    "Das Wort '{verb}' kenne ich nicht.",
+    "Ich weiß nicht, was '{verb}' bedeuten soll.",
+    "'{verb}'? Das ist kein Befehl, den ich verstehe.",
+    "Weder Mensch noch Maschine kennt den Befehl '{verb}'.",
+    "Du murmelst '{verb}' vor dich hin. Nichts passiert.",
+    "'{verb}' ergibt für mich keinen Sinn.",
+    "Selbst in der Apokalypse versteht niemand '{verb}'.",
+    "Bitte was? '{verb}' ist mir nicht bekannt.",
+]
+
+# Snarky Antworten für logisch unmögliche Aktionen
+ILLOGICAL_RESPONSES = {
+    'eat_weapon': [
+        "Das wäre unglaublich schmerzhaft und überhaupt nicht nahrhaft.",
+        "Du versuchst hineinzubeißen... Nein. Einfach nein.",
+        "Dein Magen würde das nicht überleben.",
+        "Das ist eine Waffe, kein Snack.",
+    ],
+    'eat_inedible': [
+        "Das kannst du nicht essen, so verzweifelt bist du noch nicht.",
+        "Das sieht nicht besonders appetitlich aus...",
+        "Dein Magen protestiert schon beim Gedanken daran.",
+        "Das ist definitiv nicht essbar.",
+    ],
+    'equip_food': [
+        "Du schwingst drohend die Konserve... Nicht sehr angsteinflößend.",
+        "Das ist Essen, keine Waffe. Obwohl... nein.",
+        "Damit würdest du höchstens dich selbst verletzen.",
+    ],
+    'equip_non_weapon': [
+        "Das lässt sich nicht als Waffe verwenden.",
+        "Du versuchst es drohend zu schwingen. Es sieht lächerlich aus.",
+        "Das ist keine Waffe.",
+    ],
 }
 #
 def spawn_chance():
-    if random.random() < 0.5:
+    if random.random() < 0.15:  # 15% statt 50% – weniger Zombie-Spam
         return True
     return False
 
@@ -485,7 +816,7 @@ rooms = {
         'name': 'Lager Raum',
         'description': 'Im lagerraum dirnnen stehen 3 Schwerlastregale mit weiterem dosen essen und wasser, ein bett steht in der rechten ecke. Im norden gehts in den ',
         'exits': {'norden': 'keller'},
-        'items': ['wasser', 'konserven'],
+        'items': ['wasser', 'konserven', 'rucksack'],
         'in_development': False
     },
     'suedlich_haus': {#Stadt
@@ -511,7 +842,7 @@ rooms = {
         'exits': {'norden': 'westliche_haus_gabelung', 'westen': 'krankenhaus_eingang', 'süden': 'home_depot_weggabelung_nord_ost'},
         'items': [],
         'in_development': False,
-        'spawn_chance': True,
+        'spawn_chance': False,
         'zombie_spawn': False
     },
     'krankenhaus_eingang': {#Krankenhaus
@@ -536,7 +867,7 @@ rooms = {
         'exits': {'osten': 'nord_östliche_weggabelung', 'westen': 'bibliothek_straße', 'süden': 'westliche_haus_gabelung'},
         'items': [],
         'in_development': False,
-        'spawn_chance': True,
+        'spawn_chance': False,
         'zombie_spawn': False
     },
     'bibliothek_straße': {#Bibliothek
@@ -545,7 +876,7 @@ rooms = {
         'exits': {'norden': 'bibliothek_eingang', 'osten': 'nord_westliche_weggabelung'},
         'items': [],
         'in_development': False,
-        'spawn_chance': True,
+        'spawn_chance': False,
         'zombie_spawn': False
     },
     'bibliothek_eingang': {#Bibliothek
@@ -587,7 +918,7 @@ rooms = {
         'name': 'Bibliothek',
         'description': '',
         'exits': {'westen': 'bibliothek_5', 'süden': 'bibliothek_3'},
-        'items': [],
+        'items': ['kiste'],
         'in_development': False
     },
     'bibliothek_5': {#Bibliothek
@@ -759,7 +1090,7 @@ rooms = {
         'exits': {'westen': 'haus_3_eingang', 'süden': 'nord_östliche_weggabelung', 'osten': 'parkplatz'},
         'items': [],
         'in_development': True,
-        'spawn_chance': True,
+        'spawn_chance': False,
         'zombie_spawn': False
     },
     'haus_3_eingang': {#Haus3
@@ -817,7 +1148,7 @@ rooms = {
         'exits': {'norden': 'östliche_straße', 'westen': 'suedlich_haus', 'süd_osten': 'park', 'süden': 'park_straße'},
         'items': [],
         'in_development': True,
-        'spawn_chance': True,
+        'spawn_chance': False,
         'zombie_spawn': False
     },
     'park_straße': {#Stadt
@@ -826,7 +1157,7 @@ rooms = {
         'exits': {'norden': 'oestlich_weggabelung', 'osten': 'park', 'süden': 'skyscraper_weggabelung'},
         'items': [],
         'in_development': True,
-        'spawn_chance': True,
+        'spawn_chance': False,
         'zombie_spawn': False
     },
     'skyscraper_weggabelung': {#Stadt
@@ -835,7 +1166,7 @@ rooms = {
         'exits': {'norden': 'park_straße', 'westen': 'straße_pizzeria', 'osten': 'süd_östliche_skyscraper_weggabelung', 'süden': 'westliche_skyscraper2_weggabelung'},
         'items': [],
         'in_development': True,
-        'spawn_chance': True,
+        'spawn_chance': False,
         'zombie_spawn': False
     },
     'süd_östliche_skyscraper_weggabelung': {#Stadt
@@ -844,7 +1175,7 @@ rooms = {
         'exits': {'westen': 'skyscraper_weggabelung', 'süden': 'östliche_skyscraper2_straße'},
         'items': [],
         'in_development': True,
-        'spawn_chance': True,
+        'spawn_chance': False,
         'zombie_spawn': False
     },
     'östliche_skyscraper2_straße': {#Stadt
@@ -853,7 +1184,7 @@ rooms = {
         'exits': {'norden': 'süd_östliche_skyscraper_weggabelung'},
         'items': [],
         'in_development': True,
-        'spawn_chance': True,
+        'spawn_chance': False,
         'zombie_spawn': False
     },
     'westliche_skyscraper2_weggabelung': {#Stadt
@@ -862,7 +1193,7 @@ rooms = {
         'exits': {'norden': 'skyscraper_weggabelung', 'westen': 'südliche_pizzeria_straße'},
         'items': [],
         'in_development': True,
-        'spawn_chance': True,
+        'spawn_chance': False,
         'zombie_spawn': False
     },
     'südliche_pizzeria_straße': {#Stadt
@@ -871,7 +1202,7 @@ rooms = {
         'exits': {'osten': 'skyscraper_weggabelung', 'westen': 'home_depot_weggabelung_osten'},
         'items': [],
         'in_development': True,
-        'spawn_chance': True,
+        'spawn_chance': False,
         'zombie_spawn': False
     },
     'home_depot_weggabelung_osten': {#Stadt
@@ -880,7 +1211,7 @@ rooms = {
         'exits': {'norden': 'home_depot_weggabelung_nord_ost', 'osten': 'südliche_pizzeria_straße', 'süden': 'home_depot_weggabelung_süd_ost'},
         'items': [],
         'in_development': True,
-        'spawn_chance': True,
+        'spawn_chance': False,
         'zombie_spawn': False
     },
     'home_depot_weggabelung_süd_ost': {#Stadt
@@ -889,7 +1220,7 @@ rooms = {
         'exits': {'norden': 'home_depot_weggabelung_osten', 'westen': 'home_depot_straße_süd'},
         'items': [],
         'in_development': True,
-        'spawn_chance': True,
+        'spawn_chance': False,
         'zombie_spawn': False
     },
     'home_depot_straße_süd': {#Stadt
@@ -898,7 +1229,7 @@ rooms = {
         'exits': {'osten': 'home_depot_weggabelung_süd_ost', 'westen': 'home_depot_weggabelung_west_süd'},
         'items': [],
         'in_development': True,
-        'spawn_chance': True,
+        'spawn_chance': False,
         'zombie_spawn': False
     },
     'home_depot_weggabelung_west_süd': {#Stadt
@@ -907,7 +1238,7 @@ rooms = {
         'exits': {'osten': 'home_depot_straße_süd', 'norden': 'home_depot_straße_west'},
         'items': [],
         'in_development': True,
-        'spawn_chance': True,
+        'spawn_chance': False,
         'zombie_spawn': False
     },
     'home_depot_straße_west': {#Stadt
@@ -916,7 +1247,7 @@ rooms = {
         'exits': {'süden': 'home_depot_weggabelung_west_süd', 'norden': 'home_depot_weggabelung_west_nord'},
         'items': [],
         'in_development': True,
-        'spawn_chance': True,
+        'spawn_chance': False,
         'zombie_spawn': False
     },
     'home_depot_weggabelung_west_nord': {#Stadt
@@ -925,7 +1256,7 @@ rooms = {
         'exits': {'süden': 'home_depot_straße_west', 'osten': 'home_depot_straße_nord'},
         'items': [],
         'in_development': True,
-        'spawn_chance': True,
+        'spawn_chance': False,
         'zombie_spawn': False
     },
     'home_depot_straße_nord': {#Stadt
@@ -934,7 +1265,7 @@ rooms = {
         'exits': {'osten': 'home_depot_weggabelung_nord_ost', 'westen': 'home_depot_weggabelung_nord_west'},
         'items': [],
         'in_development': True,
-        'spawn_chance': True,
+        'spawn_chance': False,
         'zombie_spawn': False
     },
     'haus1': {#Haus1
@@ -964,7 +1295,7 @@ rooms = {
         'exits': {'osten': 'skyscraper_weggabelung', 'westen': 'home_depot_weggabelung_nord_ost'},
         'items': [],
         'in_development': True,
-        'spawn_chance': True,
+        'spawn_chance': False,
         'zombie_spawn': False
     },
     'home_depot_weggabelung_nord_ost': {#Stadt
@@ -973,7 +1304,7 @@ rooms = {
         'exits': {'osten': 'straße_pizzeria', 'westen': 'home_depot_straße_nord', 'norden': 'krankenhaus_straße'},
         'items': [],
         'in_development': True,
-        'spawn_chance': True,
+        'spawn_chance': False,
         'zombie_spawn': False
     },
     'park': {#Stadt
@@ -982,7 +1313,7 @@ rooms = {
         'exits': {'westen': 'oestlich_weggabelung', 'norden': 'park_straße'},
         'items': [],
         'in_development': True,
-        'spawn_chance': True,
+        'spawn_chance': False,
         'zombie_spawn': False
     },
     'bedroom_2': {#Haus3
@@ -1607,6 +1938,7 @@ class MenuButton:
 
 def start_game():
     global current_state, game_history, current_room, player_inventory, prolog_shown, prolog_lines, prolog_line_index, menu_music_playing, visited_rooms, map_coords_dirty, zombie_kill_times
+    global game_score, game_moves, view_mode, visited_rooms_desc, game_start_ticks, pending_ambiguity
     current_state = GAME
     game_history = []
     current_room = 'start'
@@ -1614,8 +1946,32 @@ def start_game():
     prolog_shown = False
     prolog_line_index = 0
     visited_rooms = {'start'}  # Start-Raum als besucht markieren
+    visited_rooms_desc = set()
     map_coords_dirty = True
     zombie_kill_times = {}  # Respawn-Cooldowns zurücksetzen
+    game_score = 0
+    game_moves = 0
+    view_mode = 'verbose'
+    pending_ambiguity = None
+    game_start_ticks = pygame.time.get_ticks()
+    # Reset hidden stats
+    player_stats['health'] = 100
+    player_stats['strength'] = 100
+    player_stats['hunger'] = 0
+    player_stats['turns_since_last_meal'] = 0
+    player_stats['last_recovery_turn'] = 0
+    player_stats['equipped_weapon'] = None
+    player_stats['weapon_type'] = None
+    player_stats['in_combat'] = False
+    player_stats['fist_level'] = 1
+    # Container-Inhalte zurücksetzen
+    for idef in ITEM_DEFS.values():
+        if idef.is_container:
+            idef.contents = []
+            idef.is_open = False
+        # Reset light charges
+        if idef.max_charge >= 0:
+            idef.charge = idef.max_charge
     
     # Menü-Musik ausblenden
     pygame.mixer.music.fadeout(800)
@@ -1867,7 +2223,12 @@ def trigger_two_year_timeskip():
 
 def describe_room():
     """Beschreibt den aktuellen Raum"""
+    global game_score
     room = rooms[current_room]
+    
+    # Score für neuen Raum
+    if current_room not in visited_rooms_desc:
+        add_score('new_room')
     
     # Erste Begegnung mit Zombie im Startroom
     if current_room == 'start' and room.get('first_visit'):
@@ -1879,8 +2240,16 @@ def describe_room():
         room['first_visit'] = False
         return
     
-    add_to_history(f"> {room['name']}")
-    add_to_history(room['description'])
+    # View Mode Logik
+    if view_mode == 'superbrief':
+        add_to_history(f"> {room['name']}")
+    elif view_mode == 'brief' and current_room in visited_rooms_desc:
+        add_to_history(f"> {room['name']}")
+    else:
+        add_to_history(f"> {room['name']}")
+        add_to_history(room['description'])
+    
+    visited_rooms_desc.add(current_room)
     
     # Exits anzeigen
     transitions = get_transitions_from(current_room)
@@ -1946,7 +2315,7 @@ def describe_room():
                 play_random_zombie_sound()
             add_to_history("")
             add_to_history(f">>> {enemy['name']} ist hier! <<<")
-            add_to_history(f"HP: {enemy['health']}/{enemy['max_health']}")
+            add_to_history(f"Zustand: {get_enemy_health_description(enemy['health'], enemy['max_health'])}")
             player_stats['in_combat'] = True
     
     add_to_history("")
@@ -2219,9 +2588,250 @@ def draw_map(current_time):
         save_surf = font_terminal.render("✔ Layout gespeichert!", True, (100, 255, 100))
         screen.blit(save_surf, (screen.get_width()//2 - save_surf.get_width()//2, 80))
 
+# === CLASSIC MECHANICS: Helper-Funktionen ===
+
+def add_score(action_key, amount=None):
+    """Zork-style Punkte vergeben."""
+    global game_score
+    pts = amount if amount is not None else SCORE_VALUES.get(action_key, 0)
+    if pts > 0:
+        game_score += pts
+
+def format_elapsed_time():
+    """Formatiert verstrichene Pygame-Ticks als HH:MM:SS."""
+    if game_start_ticks == 0:
+        return "00:00:00"
+    elapsed_ms = pygame.time.get_ticks() - game_start_ticks
+    total_secs = elapsed_ms // 1000
+    h = total_secs // 3600
+    m = (total_secs % 3600) // 60
+    s = total_secs % 60
+    return f"{h:02d}:{m:02d}:{s:02d}"
+
+def save_game():
+    """Speichert den Spielstand als JSON."""
+    import json
+    room_items_state = {}
+    for rk, rd in rooms.items():
+        room_items_state[rk] = rd.get('items', [])[:]
+    container_states = {}
+    for ik, idef in ITEM_DEFS.items():
+        if idef.is_container:
+            container_states[ik] = {
+                'contents': idef.contents[:],
+                'is_open': idef.is_open
+            }
+    transition_locks = {}
+    for t in TRANSITIONS:
+        transition_locks[t['id']] = t.get('locked', False)
+    save_data = {
+        'current_room': current_room,
+        'player_inventory': player_inventory[:],
+        'player_stats': dict(player_stats),
+        'game_score': game_score,
+        'game_moves': game_moves,
+        'view_mode': view_mode,
+        'visited_rooms': list(visited_rooms),
+        'visited_rooms_desc': list(visited_rooms_desc),
+        'room_items': room_items_state,
+        'container_states': container_states,
+        'transition_locks': transition_locks,
+        'elapsed_ms': pygame.time.get_ticks() - game_start_ticks,
+        'bibliothek_4_schrank_geschoben': bibliothek_4_schrank_geschoben,
+        'haus1_tür_auf': haus1_tür_auf,
+        'item_charges': {ik: idef.charge for ik, idef in ITEM_DEFS.items() if idef.max_charge >= 0},
+    }
+    try:
+        with open(SAVE_FILE, 'w', encoding='utf-8') as f:
+            json.dump(save_data, f, indent=2, ensure_ascii=False)
+        add_to_history("Spiel gespeichert.")
+        add_to_history("")
+    except Exception as e:
+        add_to_history(f"Fehler beim Speichern: {e}")
+        add_to_history("")
+
+def restore_game():
+    """Lädt einen gespeicherten Spielstand."""
+    import json
+    global current_room, player_inventory, game_score, game_moves, view_mode
+    global visited_rooms, visited_rooms_desc, game_start_ticks
+    global bibliothek_4_schrank_geschoben, haus1_tür_auf
+    try:
+        with open(SAVE_FILE, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        add_to_history("Kein Spielstand gefunden.")
+        add_to_history("")
+        return
+    except Exception as e:
+        add_to_history(f"Fehler beim Laden: {e}")
+        add_to_history("")
+        return
+    current_room = data['current_room']
+    player_inventory.clear()
+    player_inventory.extend(data['player_inventory'])
+    player_stats.update(data['player_stats'])
+    game_score = data.get('game_score', 0)
+    game_moves = data.get('game_moves', 0)
+    view_mode = data.get('view_mode', 'verbose')
+    visited_rooms.clear()
+    visited_rooms.update(data.get('visited_rooms', []))
+    visited_rooms_desc.clear()
+    visited_rooms_desc.update(data.get('visited_rooms_desc', []))
+    for rk, items_list in data.get('room_items', {}).items():
+        if rk in rooms:
+            rooms[rk]['items'] = items_list
+    for ik, cstate in data.get('container_states', {}).items():
+        if ik in ITEM_DEFS and ITEM_DEFS[ik].is_container:
+            ITEM_DEFS[ik].contents = cstate.get('contents', [])
+            ITEM_DEFS[ik].is_open = cstate.get('is_open', False)
+    for t in TRANSITIONS:
+        if t['id'] in data.get('transition_locks', {}):
+            t['locked'] = data['transition_locks'][t['id']]
+    bibliothek_4_schrank_geschoben = data.get('bibliothek_4_schrank_geschoben', False)
+    haus1_tür_auf = data.get('haus1_tür_auf', False)
+    # Restore item charges (light sources)
+    for ik, charge_val in data.get('item_charges', {}).items():
+        if ik in ITEM_DEFS:
+            ITEM_DEFS[ik].charge = charge_val
+    elapsed = data.get('elapsed_ms', 0)
+    game_start_ticks = pygame.time.get_ticks() - elapsed
+    game_history.clear()
+    add_to_history("Spielstand geladen.")
+    add_to_history("")
+    describe_room()
+
+def handle_container_open(container_key):
+    """Öffne einen Container."""
+    idef = ITEM_DEFS.get(container_key)
+    if not idef or not idef.is_container:
+        add_to_history(f"'{get_item_name(container_key)}' ist kein Behälter.")
+        add_to_history("")
+        return
+    if container_key not in player_inventory and container_key not in rooms[current_room].get('items', []):
+        add_to_history(f"Du siehst hier keinen '{get_item_name(container_key)}'.")
+        add_to_history("")
+        return
+    if idef.is_open:
+        add_to_history(f"{get_item_name(container_key)} ist bereits offen.")
+    else:
+        idef.is_open = True
+        add_to_history(f"Du öffnest {get_item_name(container_key)}.")
+        if idef.contents:
+            names = [get_item_name(k) for k in idef.contents]
+            add_to_history(f"Darin: {', '.join(names)}")
+        else:
+            add_to_history("Es ist leer.")
+    add_to_history("")
+
+def handle_container_close(container_key):
+    """Schließe einen Container."""
+    idef = ITEM_DEFS.get(container_key)
+    if not idef or not idef.is_container:
+        add_to_history(f"'{get_item_name(container_key)}' ist kein Behälter.")
+        add_to_history("")
+        return
+    if not idef.is_open:
+        add_to_history(f"{get_item_name(container_key)} ist bereits geschlossen.")
+    else:
+        idef.is_open = False
+        add_to_history(f"Du schließt {get_item_name(container_key)}.")
+    add_to_history("")
+
+def handle_put_in(item_key, container_key):
+    """Lege Item in Container (mit Implicit Take)."""
+    global game_score
+    idef_c = ITEM_DEFS.get(container_key)
+    if not idef_c or not idef_c.is_container:
+        add_to_history(f"'{get_item_name(container_key)}' ist kein Behälter.")
+        add_to_history("")
+        return
+    if not idef_c.is_open:
+        add_to_history(f"{get_item_name(container_key)} ist geschlossen. Öffne ihn zuerst.")
+        add_to_history("")
+        return
+    # Check nesting: item itself cannot be a container with contents inside another container
+    idef_item = ITEM_DEFS.get(item_key)
+    if idef_item and idef_item.is_container and idef_item.contents:
+        add_to_history("Du kannst keinen gefüllten Behälter in einen anderen legen.")
+        add_to_history("")
+        return
+    # Check if container is nested inside another container
+    for other_key, other_def in ITEM_DEFS.items():
+        if other_def.is_container and container_key in other_def.contents:
+            add_to_history("Du kannst nicht hineingreifen – der Behälter ist zu tief verschachtelt.")
+            add_to_history("")
+            return
+    # Implicit Take: if item is in room but not in inventory, take it first
+    room = rooms[current_room]
+    if item_key not in player_inventory:
+        if item_key in room.get('items', []):
+            room['items'].remove(item_key)
+            player_inventory.append(item_key)
+            add_to_history(f"(Zuerst genommen: {get_item_name(item_key)})")
+            add_score('item_pickup')
+        else:
+            add_to_history(f"Du hast kein '{get_item_name(item_key)}'.")
+            add_to_history("")
+            return
+    if len(idef_c.contents) >= idef_c.capacity:
+        add_to_history(f"{get_item_name(container_key)} ist voll.")
+        add_to_history("")
+        return
+    player_inventory.remove(item_key)
+    idef_c.contents.append(item_key)
+    add_to_history(f"Du legst {get_item_name(item_key)} in {get_item_name(container_key)}.")
+    add_to_history("")
+
+def handle_take_from(item_key, container_key):
+    """Nimm Item aus Container."""
+    idef_c = ITEM_DEFS.get(container_key)
+    if not idef_c or not idef_c.is_container:
+        add_to_history(f"'{get_item_name(container_key)}' ist kein Behälter.")
+        add_to_history("")
+        return
+    if not idef_c.is_open:
+        add_to_history(f"{get_item_name(container_key)} ist geschlossen.")
+        add_to_history("")
+        return
+    # Check nesting depth
+    for other_key, other_def in ITEM_DEFS.items():
+        if other_def.is_container and container_key in other_def.contents:
+            add_to_history("Du kannst nicht hineingreifen – zu tief verschachtelt.")
+            add_to_history("")
+            return
+    if item_key not in idef_c.contents:
+        add_to_history(f"'{get_item_name(item_key)}' ist nicht in {get_item_name(container_key)}.")
+        add_to_history("")
+        return
+    idef_c.contents.remove(item_key)
+    player_inventory.append(item_key)
+    add_to_history(f"Du nimmst {get_item_name(item_key)} aus {get_item_name(container_key)}.")
+    add_score('item_pickup')
+    add_to_history("")
+
+def handle_look_in(container_key):
+    """Schaue in einen Container."""
+    idef = ITEM_DEFS.get(container_key)
+    if not idef or not idef.is_container:
+        add_to_history(f"'{get_item_name(container_key)}' ist kein Behälter.")
+        add_to_history("")
+        return
+    if not idef.is_open and not idef.is_transparent:
+        add_to_history(f"{get_item_name(container_key)} ist geschlossen.")
+        add_to_history("")
+        return
+    if idef.contents:
+        names = [get_item_name(k) for k in idef.contents]
+        add_to_history(f"In {get_item_name(container_key)}: {', '.join(names)}")
+    else:
+        add_to_history(f"{get_item_name(container_key)} ist leer.")
+    add_to_history("")
+
 def process_command(command):
     """Verarbeitet Spielerbefehle"""
     global current_room, prolog_shown, prolog_line_index, qte_active, qte_input, command_history, history_index, current_state, map_camera_x, map_camera_y, map_zoom, map_coords_dirty, map_cursor_room
+    global pending_ambiguity, game_moves, view_mode, game_score
     
     # Füge Command zur History hinzu (außer im QTE oder Prolog)
     if prolog_shown and not qte_active and command.strip():
@@ -2258,6 +2868,40 @@ def process_command(command):
     
     cmd = command.lower().strip()
 
+    # === 9-Letter Truncation ===
+    words = cmd.split()
+    words = [w[:9] for w in words]
+    cmd = ' '.join(words)
+
+    # === Ambiguity Resolution ===
+    if pending_ambiguity is not None:
+        choice = cmd.strip()
+        candidates = pending_ambiguity['candidates']
+        matched = [c for c in candidates if c.startswith(choice) or choice in c]
+        if len(matched) == 1:
+            resolved_cmd = f"{pending_ambiguity['action']} {matched[0]}"
+            pending_ambiguity = None
+            process_command(resolved_cmd)
+            return
+        elif choice.isdigit() and 1 <= int(choice) <= len(candidates):
+            resolved_cmd = f"{pending_ambiguity['action']} {candidates[int(choice)-1]}"
+            pending_ambiguity = None
+            process_command(resolved_cmd)
+            return
+        else:
+            add_to_history("Abgebrochen.")
+            add_to_history("")
+            pending_ambiguity = None
+            return
+
+    # Zähle Züge (nur echte Spielerbefehle)
+    if cmd and prolog_shown:
+        game_moves += 1
+        # Tick hidden systems (hunger, light, recovery)
+        tick_msgs = tick_hidden_systems()
+        for _tmsg in tick_msgs:
+            add_to_history(_tmsg)
+
     if cmd in ['hilfe', 'help', '?']:
         add_to_history("DEAD WORLD - BEFEHLE")
         add_to_history("")
@@ -2285,14 +2929,27 @@ def process_command(command):
         add_to_history("")
         add_to_history("Terminal:")
         add_to_history("  clear, cls - Terminal leeren")
-        add_to_history("  status - Charakter-Status anzeigen")
         add_to_history("  echo [text] - Text ausgeben")
         add_to_history("  time - Aktuelle Zeit anzeigen")
         add_to_history("  whoami - Charakter-Info")
         add_to_history("  karte, map - Weltkarte anzeigen")
         add_to_history("")
         add_to_history("System:")
+        add_to_history("  save, speichern - Spiel speichern")
+        add_to_history("  restore, laden - Spiel laden")
+        add_to_history("  score, punkte - Punkte anzeigen")
+        add_to_history("  zeit - Spielzeit anzeigen")
+        add_to_history("  diagnose, d - Gesundheits- und Zustandsbericht")
+        add_to_history("  info - Spielinfo")
+        add_to_history("  q, quit - Beenden")
+        add_to_history("  verbose/brief/superbrief - Beschreibungsmodus")
         add_to_history("  neu - Neustart nach Tod")
+        add_to_history("")
+        add_to_history("Behälter:")
+        add_to_history("  öffne/schließe [behälter]")
+        add_to_history("  lege [item] in [behälter]")
+        add_to_history("  nimm [item] aus [behälter]")
+        add_to_history("  schaue in [behälter]")
         add_to_history("")
     
     elif cmd.startswith('gehe '):
@@ -2324,14 +2981,41 @@ def process_command(command):
     elif cmd in ['r', 'runter', 'down']:
         move_direction('runter')
     
-    elif cmd.startswith('nimm '):
+    elif cmd == 'nimm':
+        # Ambiguity: kein Objekt angegeben
+        room = rooms[current_room]
+        available = room.get('items', [])
+        if len(available) == 1:
+            process_command(f'nimm {available[0]}')
+        elif len(available) > 1:
+            add_to_history("Was möchtest du nehmen?")
+            for idx, it in enumerate(available, 1):
+                add_to_history(f"  {idx}. {get_item_name(it)}")
+            pending_ambiguity = {'action': 'nimm', 'candidates': available[:], 'original_cmd': 'nimm'}
+            add_to_history("")
+        else:
+            add_to_history("Hier gibt es nichts zum Nehmen.")
+            add_to_history("")
+    
+    elif cmd.startswith('nimm ') and ' aus ' not in cmd:
         item = cmd[5:].strip()
         room = rooms[current_room]
         if item in room['items']:
-            room['items'].remove(item)
-            player_inventory.append(item)
-            add_to_history(f"Du nimmst {item}.")
-            add_to_history("")
+            # Encumbrance check
+            idef = ITEM_DEFS.get(item)
+            item_weight = idef.weight if idef else 1
+            if get_player_carry_weight() + item_weight > player_stats['max_weight']:
+                add_to_history("Deine Last ist zu schwer. Du kannst nichts mehr tragen.")
+                add_to_history("")
+            else:
+                room['items'].remove(item)
+                player_inventory.append(item)
+                add_to_history(f"Du nimmst {get_item_name(item)}.")
+                add_score('item_pickup')
+                enc = get_encumbrance_description()
+                if enc:
+                    add_to_history(enc)
+                add_to_history("")
         else:
             add_to_history(f"Hier gibt es kein '{item}'.")
             add_to_history("")
@@ -2358,47 +3042,32 @@ def process_command(command):
         add_to_history("")
         
         if player_inventory:
-            add_to_history(f"Items: {', '.join(player_inventory)}")
+            item_names = [get_item_name(it) for it in player_inventory]
+            add_to_history(f"Items: {', '.join(item_names)}")
         else:
             add_to_history("Items: Leer")
         
         if player_stats['equipped_weapon']:
             weapon = weapons[player_stats['equipped_weapon']]
-            add_to_history(f"Waffe: {weapon['name']} ({weapon['type']})")
-            
-            if weapon['type'] == 'ranged':
-                add_to_history(f"Munition: {weapon.get('ammo', 0)}")
-            else:
-                min_dmg, max_dmg = weapon['damage']
-                add_to_history(f"Schaden: {min_dmg}-{max_dmg}")
+            add_to_history(f"Waffe: {weapon['name']}")
         else:
             add_to_history("Waffe: Keine")
         
-        # Fäuste Level anzeigen
+        # Fäuste Level anzeigen (qualitativ)
         fist_level = player_stats['fist_level']
-        fist_bonus = FIST_LEVEL_BONUSES[fist_level]
-        min_dmg, max_dmg = fist_bonus['damage']
-        black_flash_percent = round(weapons['fäuste'].get('black_flash', 0) * 100, 1)
-            
-        add_to_history("")
-        add_to_history(f"=== FÄUSTE (Level {fist_level}/5) ===")
-        add_to_history(f"Schaden: {min_dmg}-{max_dmg}")
-        add_to_history(f"Black Flash: {black_flash_percent}%")
-            
-        if fist_level < 5:
-            add_to_history("(Level-Up durch Black Flash!)")
+        if fist_level >= 5:
+            add_to_history("Fäuste: Meisterhaft")
+        elif fist_level >= 3:
+            add_to_history("Fäuste: Erfahren")
         else:
-            add_to_history(">>> MAX LEVEL! <<<")
-            
+            add_to_history("Fäuste: Untrainiert")
+        
+        # Qualitative Zustandsanzeige
         add_to_history("")
-            
-        # Health Bar
-        hp_percent = player_stats['health'] / 100.0
-        bar_length = 20
-        filled = int(hp_percent * bar_length)
-        hp_bar = '█' * filled + '░' * (bar_length - filled)
-            
-        add_to_history(f"HP: [{hp_bar}] {player_stats['health']}/100")
+        add_to_history(get_health_description())
+        enc = get_encumbrance_description()
+        if enc:
+            add_to_history(enc)
         add_to_history("")
         
     elif cmd.startswith('esse ') or cmd.startswith('iss '):
@@ -2420,12 +3089,23 @@ def process_command(command):
             player_stats['health'] = min(100, player_stats['health'] + food['heal'])
             healed = player_stats['health'] - old_hp
             player_inventory.remove(item)
+            # Reset hunger and boost strength
+            player_stats['hunger'] = max(0, player_stats['hunger'] - 30)
+            player_stats['turns_since_last_meal'] = 0
+            player_stats['strength'] = min(100, player_stats['strength'] + food['heal'] // 2)
             
             add_to_history(food['message'])
             if healed > 0:
-                add_to_history(f"[+{healed} HP] ({player_stats['health']}/100)")
+                if healed >= 30:
+                    add_to_history("Du fühlst dich deutlich besser.")
+                elif healed >= 15:
+                    add_to_history("Etwas Kraft kehrt in deinen Körper zurück.")
+                else:
+                    add_to_history("Du fühlst dich ein wenig gestärkt.")
             else:
-                add_to_history(f"Dein HP ist bereits voll. ({player_stats['health']}/100)")
+                add_to_history("Du bist bereits in guter Verfassung.")
+            if player_stats['hunger'] <= 0:
+                add_to_history("Dein Hunger ist gestillt.")
             add_to_history("")
     
     elif cmd in ['schaue', 'look', 'l']:
@@ -2484,6 +3164,10 @@ def process_command(command):
                 player_stats['health'] = 0
                 # Reset Player Stats
                 player_stats['health'] = 100
+                player_stats['strength'] = 100
+                player_stats['hunger'] = 0
+                player_stats['turns_since_last_meal'] = 0
+                player_stats['last_recovery_turn'] = 0
                 player_stats['equipped_weapon'] = None
                 player_stats['weapon_type'] = None
                 player_stats['in_combat'] = False
@@ -2516,31 +3200,52 @@ def process_command(command):
             if len(target_and_weapon) == 2:
                 target = target_and_weapon[0].strip()
                 weapon_name = target_and_weapon[1].strip()
-                attack_with_weapon(target, weapon_name)
+                # Ziel-Validierung
+                room = rooms[current_room]
+                enemy_in_room = room.get('enemy', None)
+                if not enemy_in_room:
+                    add_to_history("Es gibt hier nichts zum Angreifen!")
+                    add_to_history("")
+                else:
+                    enemy = enemies.get(enemy_in_room)
+                    t = target.lower().strip()
+                    enemy_words = [enemy_in_room] + enemy['name'].lower().replace('-', ' ').split()
+                    if t == enemy_in_room or t in enemy_words:
+                        attack_with_weapon(target, weapon_name)
+                    else:
+                        add_to_history(f"Hier ist kein '{target}'.")
+                        if enemy:
+                            add_to_history(f"Hier ist: {enemy['name']}")
+                        add_to_history("")
             else:
                 add_to_history("Falsches Format. Nutze: schlag [ziel] mit [waffe]")
                 add_to_history("")
         else:
             target = cmd.split(' ', 1)[1].strip()
-            unarmed_attack(target)
+            # Ziel-Validierung
+            room = rooms[current_room]
+            enemy_in_room = room.get('enemy', None)
+            if not enemy_in_room:
+                add_to_history("Es gibt hier nichts zum Angreifen!")
+                add_to_history("")
+            else:
+                enemy = enemies.get(enemy_in_room)
+                t = target.lower().strip()
+                enemy_words = [enemy_in_room] + enemy['name'].lower().replace('-', ' ').split()
+                if t == enemy_in_room or t in enemy_words:
+                    unarmed_attack(target)
+                else:
+                    add_to_history(f"Hier ist kein '{target}'.")
+                    if enemy:
+                        add_to_history(f"Hier ist: {enemy['name']}")
+                    add_to_history("")
     
     elif cmd == 'clear' or cmd == 'cls':
         game_history.clear()
         add_to_history("Terminal geleert.")
         add_to_history("")
     
-    elif cmd == 'status' or cmd == 'stats':
-        add_to_history("CHARAKTER STATUS")
-        add_to_history("")
-        add_to_history("Name: Albert Wesker Cristal")
-        add_to_history(f"HP: {player_stats['health']}")
-        add_to_history(f"Raum: {rooms[current_room]['name']}")
-        
-        if player_stats['in_combat']:
-            add_to_history("Status: IM KAMPF")
-        else:
-            add_to_history("Status: Sicher")
-        add_to_history("")
+    # status/stats removed — use 'diagnose' or 'd' instead
     
     elif cmd.startswith('stich auf '):
         target = cmd[10:].strip()
@@ -2551,6 +3256,10 @@ def process_command(command):
         # Neues Spiel starten - setzt alles zurück
         # Reset Player Stats
         player_stats['health'] = 100
+        player_stats['strength'] = 100
+        player_stats['hunger'] = 0
+        player_stats['turns_since_last_meal'] = 0
+        player_stats['last_recovery_turn'] = 0
         player_stats['equipped_weapon'] = None
         player_stats['weapon_type'] = None
         player_stats['in_combat'] = False
@@ -2559,6 +3268,11 @@ def process_command(command):
         # Reset Enemies
         for enemy_key in enemies:
             enemies[enemy_key]['health'] = enemies[enemy_key]['max_health']
+        
+        # Reset Light charges
+        for idef in ITEM_DEFS.values():
+            if idef.max_charge >= 0:
+                idef.charge = idef.max_charge
         
         # Reset Rooms
         rooms['start']['first_visit'] = True
@@ -2644,9 +3358,194 @@ def process_command(command):
             add_to_history("Du hast nichts um die Tür zu öffnen.")
             add_to_history("")
     
-    else:
-        add_to_history("Unbekannter Befehl. Tippe 'hilfe' für Befehle.")
+    # === CONTAINER-BEFEHLE ===
+    elif cmd.startswith('öffne ') or cmd.startswith('oeffne '):
+        target = cmd.split(' ', 1)[1].strip()[:9]
+        handle_container_open(target)
+    
+    elif cmd.startswith('schließ') or cmd.startswith('schliess'):
+        parts = cmd.split(' ', 1)
+        if len(parts) > 1:
+            target = parts[1].strip()[:9]
+            handle_container_close(target)
+        else:
+            add_to_history("Was willst du schließen?")
+            add_to_history("")
+    
+    elif ' in ' in cmd and cmd.startswith('lege '):
+        # lege X in Y
+        rest = cmd[5:].strip()
+        parts = rest.split(' in ', 1)
+        if len(parts) == 2:
+            handle_put_in(parts[0].strip(), parts[1].strip())
+        else:
+            add_to_history("Format: lege [item] in [behälter]")
+            add_to_history("")
+    
+    elif ' aus ' in cmd and cmd.startswith('nimm '):
+        # nimm X aus Y
+        rest = cmd[5:].strip()
+        parts = rest.split(' aus ', 1)
+        if len(parts) == 2:
+            handle_take_from(parts[0].strip(), parts[1].strip())
+        else:
+            add_to_history("Format: nimm [item] aus [behälter]")
+            add_to_history("")
+    
+    elif cmd.startswith('schaue in ') or cmd.startswith('schau in '):
+        target = cmd.split(' in ', 1)[1].strip()
+        handle_look_in(target)
+    
+    # === VIEW MODE BEFEHLE ===
+    elif cmd in ['verbose', 'ausführl', 'ausführli']:
+        view_mode = 'verbose'
+        add_to_history("Modus: VERBOSE – Volle Beschreibungen.")
         add_to_history("")
+    
+    elif cmd in ['brief', 'kurz']:
+        view_mode = 'brief'
+        add_to_history("Modus: BRIEF – Kurze Beschreibungen bei Wiederbesuch.")
+        add_to_history("")
+    
+    elif cmd in ['superbrie', 'superkur', 'superkurz']:
+        view_mode = 'superbrief'
+        add_to_history("Modus: SUPERBRIEF – Nur Raumnamen.")
+        add_to_history("")
+    
+    # === SYSTEM-BEFEHLE ===
+    elif cmd == 'info':
+        add_to_history("═══════════════════════════════")
+        add_to_history("  DEAD WORLD v1.0")
+        add_to_history("  Ein Zork-inspiriertes")
+        add_to_history("  Survival Text-Adventure")
+        add_to_history("  mit Pygame Terminal-UI")
+        add_to_history("═══════════════════════════════")
+        add_to_history(f"  Züge: {game_moves}")
+        add_to_history(f"  Punkte: {game_score}")
+        add_to_history(f"  Spielzeit: {format_elapsed_time()}")
+        add_to_history("")
+    
+    elif cmd in ['q', 'quit', 'beenden']:
+        add_to_history("═══ SPIELENDE ═══")
+        add_to_history(f"Punkte: {game_score}")
+        add_to_history(f"Züge: {game_moves}")
+        add_to_history(f"Spielzeit: {format_elapsed_time()}")
+        add_to_history("")
+        add_to_history("Willst du wirklich beenden? (Tippe 'neu' für Neustart)")
+        add_to_history("")
+    
+    elif cmd in ['save', 'speicher', 'speichern']:
+        save_game()
+    
+    elif cmd in ['restore', 'laden']:
+        restore_game()
+    
+    elif cmd in ['score', 'punkte']:
+        add_to_history(f"Punkte: {game_score}")
+        add_to_history(f"Züge: {game_moves}")
+        add_to_history("")
+    
+    elif cmd in ['zeit']:
+        add_to_history(f"Spielzeit: {format_elapsed_time()}")
+        ticks_total = pygame.time.get_ticks() - game_start_ticks
+        add_to_history(f"Pygame Ticks: {ticks_total}")
+        add_to_history("")
+    
+    elif cmd in ['diagnose', 'd']:
+        add_to_history("═══ DIAGNOSE ═══")
+        add_to_history(get_health_description())
+        add_to_history(get_strength_description())
+        hunger_desc = get_hunger_description()
+        if hunger_desc:
+            add_to_history(hunger_desc)
+        if player_stats['equipped_weapon']:
+            w = weapons[player_stats['equipped_weapon']]
+            add_to_history(f"Waffe: {w['name']}")
+        else:
+            add_to_history("Waffe: Keine")
+        add_to_history(f"Kampfstatus: {'IM KAMPF' if player_stats['in_combat'] else 'Sicher'}")
+        enc = get_encumbrance_description()
+        if enc:
+            add_to_history(enc)
+        # Light status
+        for litem in player_inventory:
+            lidef = ITEM_DEFS.get(litem)
+            if lidef and lidef.max_charge >= 0:
+                if lidef.charge <= 0:
+                    add_to_history(f"{lidef.name}: Erloschen")
+                elif lidef.charge <= 20:
+                    add_to_history(f"{lidef.name}: Schwaches Licht")
+                else:
+                    add_to_history(f"{lidef.name}: Leuchtet")
+        add_to_history("")
+    
+    else:
+        # === REACTIVE PARSER ===
+        verb = words[0] if words else ''
+        obj = ' '.join(words[1:]) if len(words) > 1 else ''
+        room = rooms[current_room]
+        all_known_items = set(ITEM_DEFS.keys())
+        room_items = set(room.get('items', []))
+        inv_items = set(player_inventory)
+        
+        # 1) Verb braucht Objekt aber keins angegeben -> fragen
+        if verb in VERBS_NEED_OBJECT and not obj:
+            infinitiv = VERBS_NEED_OBJECT[verb]
+            add_to_history(f"Was willst du {infinitiv}?")
+            pending_ambiguity = {'action': verb, 'candidates': list(room_items | inv_items), 'original_cmd': verb}
+            add_to_history("")
+            return
+        
+        # 2) Logisch unmögliche Aktionen
+        if verb in ('esse', 'iss') and obj:
+            if obj in weapons:
+                add_to_history(random.choice(ILLOGICAL_RESPONSES['eat_weapon']))
+                add_to_history("")
+                return
+            if obj in all_known_items and obj not in food_items:
+                add_to_history(random.choice(ILLOGICAL_RESPONSES['eat_inedible']))
+                add_to_history("")
+                return
+        if verb in ('ausrüsten',) and obj:
+            if obj in food_items:
+                add_to_history(random.choice(ILLOGICAL_RESPONSES['equip_food']))
+                add_to_history("")
+                return
+            if obj in all_known_items and obj not in weapons:
+                add_to_history(random.choice(ILLOGICAL_RESPONSES['equip_non_weapon']))
+                add_to_history("")
+                return
+        
+        # 3) Objekt existiert im Spiel aber nicht hier
+        if obj and obj in all_known_items:
+            if obj not in room_items and obj not in inv_items:
+                add_to_history(f"Du siehst hier kein '{get_item_name(obj)}'.")
+                add_to_history("")
+                return
+        
+        # 4) Partielle Objekterkennung / Disambiguation
+        if obj:
+            available = list(room_items | inv_items)
+            matches = [it for it in available if obj in it or it.startswith(obj)]
+            if len(matches) == 1 and verb in VERBS_NEED_OBJECT:
+                process_command(f"{verb} {matches[0]}")
+                return
+            elif len(matches) > 1:
+                add_to_history(f"Was meinst du?")
+                for idx, m in enumerate(matches, 1):
+                    add_to_history(f"  {idx}. {get_item_name(m)}")
+                pending_ambiguity = {'action': verb, 'candidates': matches, 'original_cmd': cmd}
+                add_to_history("")
+                return
+        
+        # 5) Unbekanntes Verb
+        if verb and verb[:9] not in KNOWN_VERBS:
+            resp = random.choice(UNKNOWN_VERB_RESPONSES).format(verb=verb)
+            add_to_history(resp)
+            add_to_history("")
+        else:
+            add_to_history("Unbekannter Befehl. Tippe 'hilfe' für Befehle.")
+            add_to_history("")
 
 def equip_weapon(weapon_key):
     """Rüste eine Waffe aus"""
@@ -2709,6 +3608,14 @@ def ranged_attack(target):
         add_to_history("")
         return
     
+    # Ziel-Validierung: target muss zum Gegner passen
+    t = target.lower().strip()
+    enemy_words = [enemy_in_room] + enemy['name'].lower().replace('-', ' ').split()
+    if t != enemy_in_room and t not in enemy_words:
+        add_to_history(f"Hier ist kein '{target}'. Hier ist: {enemy['name']}")
+        add_to_history("")
+        return
+    
     # Schussberechnung
     add_to_history(f"Du legst die {weapon['name']} an...")
     
@@ -2728,8 +3635,8 @@ def ranged_attack(target):
         damage = random.randint(min_dmg, max_dmg)
         
         enemy['health'] -= damage
-        add_to_history(f"TREFFER! {damage} Schaden!")
-        add_to_history(f"{enemy['name']} HP: {enemy['health']}/{enemy['max_health']}")
+        add_to_history(get_enemy_damage_reaction(damage, enemy['health'], enemy['max_health']))
+        add_to_history(f"Zustand: {get_enemy_health_description(enemy['health'], enemy['max_health'])}")
         
         if enemy['health'] <= 0:
             stop_zombie_sounds()
@@ -2737,6 +3644,7 @@ def ranged_attack(target):
             room['enemy'] = None
             player_stats['in_combat'] = False
             zombie_kill_times[current_room] = time.time()  # Respawn-Cooldown starten
+            add_score('zombie_kill')
         else:
             # Gegner-Gegenangriff
             enemy_counterattack(enemy)
@@ -2745,7 +3653,6 @@ def ranged_attack(target):
         # Gegner-Gegenangriff
         enemy_counterattack(enemy)
     
-    add_to_history(f"Munition: {weapon['ammo']}")
     add_to_history("")
 
 def enemy_counterattack(enemy):
@@ -2754,15 +3661,18 @@ def enemy_counterattack(enemy):
     damage = random.randint(min_dmg, max_dmg)
     
     player_stats['health'] -= damage
-    add_to_history(f"{enemy['name']} greift an! -{damage} HP")
-    add_to_history(f"Deine HP: {player_stats['health']}/100")
+    add_to_history(f"{enemy['name']} greift an!")
+    add_to_history(get_damage_reaction(damage, player_stats['health']))
     
     if player_stats['health'] <= 0:
         add_to_history("")
         add_to_history("=== DU BIST GESTORBEN ===")
-        # Neues Spiel starten - setzt alles zurück
         # Reset Player Stats
         player_stats['health'] = 100
+        player_stats['strength'] = 100
+        player_stats['hunger'] = 0
+        player_stats['turns_since_last_meal'] = 0
+        player_stats['last_recovery_turn'] = 0
         player_stats['equipped_weapon'] = None
         player_stats['weapon_type'] = None
         player_stats['in_combat'] = False
@@ -2936,6 +3846,14 @@ def attack_with_weapon(target, weapon_name):
         add_to_history("")
         return
     
+    # Ziel-Validierung: target muss zum Gegner passen
+    t = target.lower().strip()
+    enemy_words = [enemy_in_room] + enemy['name'].lower().replace('-', ' ').split()
+    if t != enemy_in_room and t not in enemy_words:
+        add_to_history(f"Hier ist kein '{target}'. Hier ist: {enemy['name']}")
+        add_to_history("")
+        return
+    
     # Prüfe ob die Waffe existiert
     if weapon_key not in weapons:
         add_to_history(f"'{weapon_name}' ist keine bekannte Waffe.")
@@ -2979,6 +3897,16 @@ def unarmed_attack(target):
         add_to_history("Es gibt hier nichts zum Angreifen!")
         add_to_history("")
         return
+    
+    # Ziel-Validierung: target muss zum Gegner passen
+    enemy = enemies.get(enemy_in_room)
+    if enemy:
+        t = target.lower().strip()
+        enemy_words = [enemy_in_room] + enemy['name'].lower().replace('-', ' ').split()
+        if t != enemy_in_room and t not in enemy_words:
+            add_to_history(f"Hier ist kein '{target}'. Hier ist: {enemy['name']}")
+            add_to_history("")
+            return
     
     # Spezialfall: Zombie mit Feuerlöscher (im Inventar oder Raum)
     if current_room == 'start' and enemy_in_room == 'zombie':
@@ -3038,13 +3966,15 @@ def level_up_fists():
     
     player_stats['fist_level'] += 1
     new_level = player_stats['fist_level']
-    new_bonus = FIST_LEVEL_BONUSES[new_level]
-    min_dmg, max_dmg = new_bonus['damage']
+    
+    level_names = {2: 'Straßenkämpfer', 3: 'Erfahren', 4: 'Fortgeschritten', 5: 'Meisterhaft'}
+    level_name = level_names.get(new_level, f'Level {new_level}')
     
     add_to_history("")
     add_to_history("=================================")
-    add_to_history(f">>> FÄUSTE LEVEL UP! Level {new_level} <<<")
-    add_to_history(f"Neuer Schaden: {min_dmg}-{max_dmg}")
+    add_to_history(f">>> FÄUSTE LEVEL UP! <<<")
+    add_to_history(f"Kampfstil: {level_name}")
+    add_to_history("Du spürst wie deine Schläge mächtiger werden.")
     add_to_history("=================================")
 
 
@@ -3084,8 +4014,8 @@ def handle_melee_qte(success, data):
             got_black_flash = True
             
         enemy['health'] -= damage
-        add_to_history(f"Treffer! {damage} Schaden!")
-        add_to_history(f"{enemy['name']} HP: {enemy['health']}/{enemy['max_health']}")
+        add_to_history(get_enemy_damage_reaction(damage, enemy['health'], enemy['max_health']))
+        add_to_history(f"Zustand: {get_enemy_health_description(enemy['health'], enemy['max_health'])}")
         
         # Level-Up bei Black Flash (statt XP-System)
         if is_fists and got_black_flash:
@@ -3104,6 +4034,7 @@ def handle_melee_qte(success, data):
             room['enemy'] = None
             player_stats['in_combat'] = False
             zombie_kill_times[current_room] = time.time()  # Respawn-Cooldown starten
+            add_score('zombie_kill')
             
             # Raumspezifische Belohnungen
             if current_room == 'start':
@@ -3118,14 +4049,18 @@ def handle_melee_qte(success, data):
             min_dmg, max_dmg = enemy['damage']
             damage = random.randint(min_dmg, max_dmg)
             player_stats['health'] -= damage
-            add_to_history(f"{enemy['name']} krallt sich in deine Schulter! -{damage} HP")
-            add_to_history(f"Deine HP: {player_stats['health']}/100")
+            add_to_history(f"{enemy['name']} krallt sich in deine Schulter!")
+            add_to_history(get_damage_reaction(damage, player_stats['health']))
             
             if player_stats['health'] <= 0:
                 add_to_history("")
                 add_to_history("=== DU BIST GESTORBEN ===")
                 # Reset Player Stats
                 player_stats['health'] = 100
+                player_stats['strength'] = 100
+                player_stats['hunger'] = 0
+                player_stats['turns_since_last_meal'] = 0
+                player_stats['last_recovery_turn'] = 0
                 player_stats['equipped_weapon'] = None
                 player_stats['weapon_type'] = None
                 player_stats['in_combat'] = False
@@ -3147,14 +4082,18 @@ def handle_melee_qte(success, data):
         min_dmg, max_dmg = enemy['damage']
         damage = random.randint(min_dmg, max_dmg)
         player_stats['health'] -= damage
-        add_to_history(f"Der Zombie beißt zu! -{damage} HP")
-        add_to_history(f"Deine HP: {player_stats['health']}/100")
+        add_to_history(f"Der Zombie beißt zu!")
+        add_to_history(get_damage_reaction(damage, player_stats['health']))
         
         if player_stats['health'] <= 0:
             add_to_history("")
             add_to_history("=== DU BIST GESTORBEN ===")
             # Reset Player Stats
             player_stats['health'] = 100
+            player_stats['strength'] = 100
+            player_stats['hunger'] = 0
+            player_stats['turns_since_last_meal'] = 0
+            player_stats['last_recovery_turn'] = 0
             player_stats['equipped_weapon'] = None
             player_stats['weapon_type'] = None
             player_stats['in_combat'] = False
@@ -3190,14 +4129,18 @@ def handle_dodge_qte(success):
         min_dmg, max_dmg = enemy['damage']
         damage = random.randint(min_dmg, max_dmg)
         player_stats['health'] -= damage
-        add_to_history(f"Getroffen! -{damage} HP")
-        add_to_history(f"Deine HP: {player_stats['health']}/100")
+        add_to_history(f"Getroffen!")
+        add_to_history(get_damage_reaction(damage, player_stats['health']))
         
         if player_stats['health'] <= 0:
             add_to_history("")
             add_to_history("=== DU BIST GESTORBEN ===")
             # Reset Player Stats
             player_stats['health'] = 100
+            player_stats['strength'] = 100
+            player_stats['hunger'] = 0
+            player_stats['turns_since_last_meal'] = 0
+            player_stats['last_recovery_turn'] = 0
             player_stats['equipped_weapon'] = None
             player_stats['weapon_type'] = None
             player_stats['in_combat'] = False
@@ -3785,9 +4728,13 @@ def main():
                             input_text = ""
                             cursor_position = 0
                         elif input_text.strip():
-                            # Im Spiel: verarbeite Befehl
-                            add_to_history(f"> {input_text}")
-                            process_command(input_text)
+                            # Comma-Split: mehrere Befehle auf einer Zeile
+                            raw_cmds = input_text.split(',')
+                            for sub_cmd in raw_cmds:
+                                sub_cmd = sub_cmd.strip()
+                                if sub_cmd:
+                                    add_to_history(f"> {sub_cmd}")
+                                    process_command(sub_cmd)
                             input_text = ""
                             cursor_position = 0
                             history_index = -1
