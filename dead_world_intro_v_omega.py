@@ -270,6 +270,8 @@ _gradient_sep_cache = None
 _gradient_sep_cache_key = (0, 0, 0)  # (w, padding, color_key)
 
 # Kampfsystem
+ZOMBIE_RESPAWN_COOLDOWN = 300  # 5 Minuten in Sekunden
+zombie_kill_times = {}  # room_key -> time.time() wann Zombie zuletzt getötet wurde
 
 player_stats = {   
     'health': 100,
@@ -1604,7 +1606,7 @@ class MenuButton:
             self.action()
 
 def start_game():
-    global current_state, game_history, current_room, player_inventory, prolog_shown, prolog_lines, prolog_line_index, menu_music_playing, visited_rooms, map_coords_dirty
+    global current_state, game_history, current_room, player_inventory, prolog_shown, prolog_lines, prolog_line_index, menu_music_playing, visited_rooms, map_coords_dirty, zombie_kill_times
     current_state = GAME
     game_history = []
     current_room = 'start'
@@ -1613,6 +1615,7 @@ def start_game():
     prolog_line_index = 0
     visited_rooms = {'start'}  # Start-Raum als besucht markieren
     map_coords_dirty = True
+    zombie_kill_times = {}  # Respawn-Cooldowns zurücksetzen
     
     # Menü-Musik ausblenden
     pygame.mixer.music.fadeout(800)
@@ -1805,12 +1808,14 @@ def move_direction(direction):
         trigger_two_year_timeskip()
         return
     
-    # 50% Zombie-Spawn in target rooms with spawn_chance
+    # 50% Zombie-Spawn in target rooms with spawn_chance (mit 5-Min-Cooldown)
     next_room = rooms.get(target)
     if next_room and next_room.get('spawn_chance') and spawn_chance():
-        enemies['zombie']['health'] = enemies['zombie']['max_health']
-        next_room['enemy'] = 'zombie'
-        next_room['zombie_spawn'] = True
+        last_kill = zombie_kill_times.get(target, 0)
+        if time.time() - last_kill >= ZOMBIE_RESPAWN_COOLDOWN:
+            enemies['zombie']['health'] = enemies['zombie']['max_health']
+            next_room['enemy'] = 'zombie'
+            next_room['zombie_spawn'] = True
     
     # Move player
     current_room = target
@@ -1889,37 +1894,49 @@ def describe_room():
         add_to_history(f"Du siehst: {', '.join(room['items'])}")
     
     if current_room == 'wohnbereich' and room.get('zombie_spawn'):
-        # Neuer Zombie im Wohnbereich - Health zurücksetzen
-        enemies['zombie']['health'] = enemies['zombie']['max_health']
-        play_random_zombie_sound()
-        add_to_history("")
-        add_to_history("Der Zombie taumelt auf dich zu!")
-        add_to_history("Tentakel zucken aus seinem Mund.")
-        add_to_history("")
-        room['zombie_spawn'] = False
-        return
+        last_kill = zombie_kill_times.get(current_room, 0)
+        if time.time() - last_kill >= ZOMBIE_RESPAWN_COOLDOWN:
+            # Neuer Zombie im Wohnbereich - Health zurücksetzen
+            enemies['zombie']['health'] = enemies['zombie']['max_health']
+            play_random_zombie_sound()
+            add_to_history("")
+            add_to_history("Der Zombie taumelt auf dich zu!")
+            add_to_history("Tentakel zucken aus seinem Mund.")
+            add_to_history("")
+            room['zombie_spawn'] = False
+            return
+        else:
+            room['zombie_spawn'] = False
     
     if current_room == 'walmart_5' and room.get('zombie_spawn'):
-        # Neuer Zombie im Wohnbereich - Health zurücksetzen
-        enemies['zombie']['health'] = enemies['zombie']['max_health']
-        play_random_zombie_sound()
-        add_to_history("")
-        add_to_history("Der Zombie taumelt auf dich zu!")
-        add_to_history("Tentakel zucken aus seinem Mund.")
-        add_to_history("")
-        room['zombie_spawn'] = False
-        return
+        last_kill = zombie_kill_times.get(current_room, 0)
+        if time.time() - last_kill >= ZOMBIE_RESPAWN_COOLDOWN:
+            # Neuer Zombie im Walmart 5 - Health zurücksetzen
+            enemies['zombie']['health'] = enemies['zombie']['max_health']
+            play_random_zombie_sound()
+            add_to_history("")
+            add_to_history("Der Zombie taumelt auf dich zu!")
+            add_to_history("Tentakel zucken aus seinem Mund.")
+            add_to_history("")
+            room['zombie_spawn'] = False
+            return
+        else:
+            room['zombie_spawn'] = False
 
     if current_room == 'walmart_9' and room.get('zombie_spawn'):
-        # Neuer Zombie im Wohnbereich - Health zurücksetzen
-        enemies['zombie']['health'] = enemies['zombie']['max_health']
-        play_random_zombie_sound()
-        add_to_history("")
-        add_to_history("Der Zombie taumelt auf dich zu!")
-        add_to_history("Tentakel zucken aus seinem Mund.")
-        add_to_history("")
-        room['zombie_spawn'] = False
-        return
+        last_kill = zombie_kill_times.get(current_room, 0)
+        if time.time() - last_kill >= ZOMBIE_RESPAWN_COOLDOWN:
+            # Neuer Zombie im Walmart 9 - Health zurücksetzen
+            enemies['zombie']['health'] = enemies['zombie']['max_health']
+            play_random_zombie_sound()
+            add_to_history("")
+            add_to_history("Der Zombie taumelt auf dich zu!")
+            add_to_history("Tentakel zucken aus seinem Mund.")
+            add_to_history("")
+            room['zombie_spawn'] = False
+            return
+        else:
+            room['zombie_spawn'] = False
     # Gegner im Raum?
     if room.get('enemy'):
         enemy_key = room['enemy']
@@ -2719,6 +2736,7 @@ def ranged_attack(target):
             add_to_history(f"Der {enemy['name']} bricht zusammen!")
             room['enemy'] = None
             player_stats['in_combat'] = False
+            zombie_kill_times[current_room] = time.time()  # Respawn-Cooldown starten
         else:
             # Gegner-Gegenangriff
             enemy_counterattack(enemy)
@@ -3085,6 +3103,7 @@ def handle_melee_qte(success, data):
             # Gegner besiegt - entferne aus Raum
             room['enemy'] = None
             player_stats['in_combat'] = False
+            zombie_kill_times[current_room] = time.time()  # Respawn-Cooldown starten
             
             # Raumspezifische Belohnungen
             if current_room == 'start':
