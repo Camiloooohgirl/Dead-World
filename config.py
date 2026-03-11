@@ -142,6 +142,7 @@ KNOWN_VERBS = {
     'info', 'q', 'quit', 'beenden', 'save', 'speicher', 'speichern',
     'restore', 'laden', 'score', 'punkte', 'zeit', 'diagnose', 'd',
     'schieben', 'schieb', 'brech', 'zerhacke', '?', 'mapedit',
+    'nutze', 'benutze',
 }
 
 VERBS_NEED_OBJECT = {
@@ -151,6 +152,7 @@ VERBS_NEED_OBJECT = {
     'schlag': 'schlagen', 'schlage': 'schlagen',
     'schieße': 'schießen', 'schiesse': 'schießen',
     'stich': 'stechen',
+    'nutze': 'benutzen', 'benutze': 'benutzen',
 }
 
 UNKNOWN_VERB_RESPONSES = [

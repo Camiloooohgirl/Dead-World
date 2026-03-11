@@ -260,6 +260,54 @@ def handle_item_commands(cmd):
             _h("")
         return True
 
+    # --- NUTZE / BENUTZE ---
+    if cmd.startswith('nutze ') or cmd.startswith('benutze '):
+        if cmd.startswith('nutze '):
+            item = cmd[6:].strip()
+        else:
+            item = cmd[8:].strip()
+
+        if item not in _game.player_inventory:
+            _h(f"Du hast kein '{item}' im Inventar.")
+            _h("")
+        elif item in weapons:
+            # Waffe ausrüsten
+            _game.equip_weapon(item)
+        elif item in food_items:
+            # Heilitem / Essen benutzen
+            if item == 'medkit' and _game.player_stats['health'] >= 100:
+                _h("Du bist bereits in perfekter Verfassung. Das Medkit wäre Verschwendung.")
+                _h("")
+            elif _game.player_stats['health'] >= 100 and food_items[item]['heal'] > 0:
+                _h("Du bist bereits vollständig geheilt. Das wäre Verschwendung.")
+                _h("")
+            else:
+                food = food_items[item]
+                old_hp = _game.player_stats['health']
+                _game.player_stats['health'] = min(100, _game.player_stats['health'] + food['heal'])
+                healed = _game.player_stats['health'] - old_hp
+                _game.player_inventory.remove(item)
+                _game.player_stats['hunger'] = max(0, _game.player_stats['hunger'] - 30)
+                _game.player_stats['turns_since_last_meal'] = 0
+                _game.player_stats['strength'] = min(100, _game.player_stats['strength'] + food['heal'] // 2)
+                _h(food['message'])
+                if healed > 0:
+                    if healed >= 30:
+                        _h("Du fühlst dich deutlich besser.")
+                    elif healed >= 15:
+                        _h("Etwas Kraft kehrt in deinen Körper zurück.")
+                    else:
+                        _h("Du fühlst dich ein wenig gestärkt.")
+                else:
+                    _h("Du bist bereits in guter Verfassung.")
+                if _game.player_stats['hunger'] <= 0:
+                    _h("Dein Hunger ist gestillt.")
+                _h("")
+        else:
+            _h(f"Du weißt nicht, wie du '{_game.get_item_name(item)}' benutzen sollst.")
+            _h("")
+        return True
+
     return False
 
 
