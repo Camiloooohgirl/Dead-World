@@ -791,42 +791,42 @@ rooms = {
     },
     'walmart_eingang': {#Walmart
         'name': 'Walmart Eingang',
-        'description': 'Die Schiebetüren aus glas sind kaputt, boden voller scherben, die kannst im Walmart zombies durch Regale sehen ',
+        'description': 'Die Schiebetüren aus glas sind kaputt, boden voller scherben, die kannst im Walmart zombies durch Regale sehen.',
         'exits': {'süden': 'parkplatz', 'norden': 'walmart_1'},
         'items': [],
         'in_development': False
     },
     'walmart_1': {#Walmart
         'name': 'Walmart',
-        'description': 'Du stehst im walmart, die siehst viele umgefallene Regale, und viele Artikel liegen auf dem Boden. Links von dir bemerkst du einen durchgang',
+        'description': 'Du stehst im walmart, die siehst viele umgefallene Regale, und viele Artikel liegen auf dem Boden. Links von dir bemerkst du einen durchgang.',
         'exits': {'süden': 'parkplatz', 'westen': 'walmart_2'},
         'items': [],
         'in_development': True
     },
     'walmart_2': {#Walmart
         'name': 'Walmart',
-        'description': '',
+        'description': 'Du stehst in der unteren linken ecke des walmarts, weiterhin nur umgefallene Regale in sicht. Es sieht so aus als könntest du gerade aus weiter gehen.',
         'exits': {'norden': 'walmart_3','osten': 'walmart_3'},
         'items': [],
         'in_development': True
     },
     'walmart_3': {#Walmart
         'name': 'Walmart',
-        'description': '',
+        'description': 'Weitere Regale am stehen, gerade aus wird dein weg von umgefallenen regalen blockiert, du siehst einen durchgang rechts von dir.',
         'exits': {'süden': 'walmart_2', 'osten': 'walmart_4'},
         'items': ['schokoriegel', 'energieriegel'],
         'in_development': True
     },
     'walmart_4': {#Walmart
         'name': 'Walmart',
-        'description': '',
+        'description': 'Weiter drinne im Walmart siehst du weiter hin nur umgefallene Regale. Der weg führt weiter hin nach rechts.',
         'exits': {'osten': 'walmart_5', 'westen': 'walmart_3'},
         'items': [],
         'in_development': True
     },
     'walmart_5': {#Walmart
         'name': 'Walmart',
-        'description': '',
+        'description': 'In der Mitte vom Walmart hast du eine halbwegs gute sicht durch den Laden, in der unteren rechten ecke des Ladens siehst du etwas liegen',
         'exits': {'norden': 'walmart_6', 'westen': 'walmart_4'},
         'items': [],
         'enemy': 'zombie',
@@ -835,7 +835,7 @@ rooms = {
     },
     'walmart_6': {#Walmart
         'name': 'Walmart',
-        'description': '',
+        'description': 'Der weg nach rechts ist nun abgeblockt von Regalen. Dafür ist gerade aus nun der weg frei.',
         'exits': {'westen': 'walmart_7', 'süden': 'walmart_5'},
         'items': [],
         'in_development': True
