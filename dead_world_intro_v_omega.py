@@ -79,6 +79,7 @@ map_target_y = 0
 map_cursor_room = None
 map_dragging = False
 map_drag_last_pos = (0, 0)
+map_coords_dirty = True
 
 # Node-Dragging (Customizable Map)
 node_dragging = False          # True wenn ein Node gerade gezogen wird
@@ -1690,10 +1691,6 @@ def draw_intro(current_time):
         return True
     
     screen.fill(BLACK)
-    
-    # Atmosphärische Schichten
-    draw_fog(screen, current_time, alpha)
-    draw_particles(screen, current_time, alpha // 2)
     
     # Vignette für Tiefe
     draw_vignette(screen, int(200 * (alpha / 255)))
@@ -3618,8 +3615,6 @@ def draw_options(current_time):
     """Zeichnet das atmosphärische Options-Menü"""
     screen.fill(BLACK)
     draw_cracks(screen, 35)
-    draw_fog(screen, current_time, 150)
-    draw_particles(screen, current_time, 60)
     draw_vignette(screen, 140)
     
     # Skalierte Fonts
@@ -3735,8 +3730,6 @@ def draw_menu(current_time):
     screen.fill(BLACK)
     
     # Atmosphärische Hintergrund-Schichten
-    draw_fog(screen, current_time, 200)
-    draw_particles(screen, current_time, 80)
     draw_vignette(screen, 160)
     
     # Skalierte Schriften
