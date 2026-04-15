@@ -593,7 +593,7 @@ def handle_interaction_commands(cmd):
         if _game.current_room == 'haus1' and 'axt' in _game.player_inventory:
             if not _game.haus1_tür_auf:
                 _game.haus1_tür_auf = True
-                _game.unlock_transition('haus1_tuer')
+                _game.unlock_transition('haus1_tür')
                 _h("Du nimmst die Axt in die Hände")
                 _h("Mit wucht schlägst du mit der Axt auf die Tür ein")
                 _h("Man kann nun ins Haus rein")
@@ -603,6 +603,23 @@ def handle_interaction_commands(cmd):
                 _h("")
         else:
             _h("Du hast nichts um die Tür zu öffnen.")
+            _h("")
+        return True
+
+    if cmd in ('Ziehe die Dachbodentür runter', 'ziehe die dachbodentür runter', 'dachbodentür runterziehen', 'Mit dem Gehstock die Dachbodentür öffnen'):
+        if _game.current_room == 'haus1_dachbodentür' and 'Gehstock' in _game.player_inventory:
+            if not _game.haus1_dachbodentür_auf:
+                _game.haus1_dachbodentür_auf = True
+                _game.unlock_transition('haus1_dachbodentür')
+                _h("Du nimmst den Gehstock in die Hände")
+                _h("Mit einem schwung hackts du dich in den griff der Dachbodentür")
+                _h("Nach einem Guten ruck nach unten ist die Dachbodentür offen")
+                _h("")
+            else:
+                _h("Die Tür ist bereits unten")
+                _h("")
+        else:
+            _h("Die Tür ist zu weit oben um dran zukommen")
             _h("")
         return True
 
