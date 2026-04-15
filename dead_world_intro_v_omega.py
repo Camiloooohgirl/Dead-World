@@ -1719,18 +1719,24 @@ class MenuButton:
         self.pos = pos
         self.action = action
         self.hovered = False
+        self.disabled = False
         self.rect = None
     
     def draw(self, surface, current_time):
         button_font = get_scaled_font(50)
         
-        if self.hovered:
+        if self.disabled:
+            color = GRAY
+            shadow_color = (30, 25, 30)
+        elif self.hovered:
             color = HOVER_RED
+            shadow_color = DEEP_RED
         else:
             color = BLOOD_RED
+            shadow_color = DEEP_RED
         
         # Schatten
-        shadow = button_font.render(self.text, True, DEEP_RED)
+        shadow = button_font.render(self.text, True, shadow_color)
         shadow_rect = shadow.get_rect(center=(self.pos[0] + scale(2), self.pos[1] + scale(2)))
         surface.blit(shadow, shadow_rect)
         
@@ -1739,20 +1745,23 @@ class MenuButton:
         self.rect = text_surf.get_rect(center=self.pos)
         surface.blit(text_surf, self.rect)
         
-        # Unterstreichungs-Animation bei Hover
-        if self.hovered:
+        # Unterstreichungs-Animation bei Hover (nicht bei disabled)
+        if self.hovered and not self.disabled:
             line_width = int(self.rect.width * (0.5 + 0.5 * math.sin(current_time * 0.005)))
             line_x = self.rect.centerx - line_width // 2
             line_y = self.rect.bottom + scale(4)
             pygame.draw.line(surface, HOVER_RED, (line_x, line_y), (line_x + line_width, line_y), max(1, scale(2)))
     
     def check_hover(self, mouse_pos):
+        if self.disabled:
+            self.hovered = False
+            return False
         if self.rect:
             self.hovered = self.rect.collidepoint(mouse_pos)
         return self.hovered
     
     def click(self):
-        if self.hovered and self.action:
+        if self.hovered and self.action and not self.disabled:
             self.action()
 
 def start_game():
@@ -1801,6 +1810,71 @@ def start_game():
     
     # Prolog-Text sofort anzeigen (process_command übernimmt die Logik)
     process_command("")
+
+def load_game_from_menu():
+    """Lädt einen gespeicherten Spielstand direkt aus dem Hauptmenü."""
+    import json
+    global current_state, current_room, player_inventory, game_score, game_moves, view_mode
+    global visited_rooms, visited_rooms_desc, game_start_ticks, prolog_shown, prolog_lines, prolog_line_index
+    global bibliothek_4_schrank_geschoben, haus1_tür_auf, menu_music_playing
+    global scored_items, scored_kills, pending_ambiguity, game_history
+    
+    if not os.path.exists(SAVE_FILE):
+        return  # Kein Spielstand vorhanden
+    
+    try:
+        with open(SAVE_FILE, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+    except Exception:
+        return  # Fehler beim Laden → nichts tun
+    
+    # Wechsle zum Spielzustand
+    current_state = GAME
+    prolog_shown = True  # Prolog überspringen, direkt ins Spiel
+    prolog_lines = []
+    prolog_line_index = 0
+    pending_ambiguity = None
+    game_history = []
+    
+    # Menü-Musik ausblenden
+    pygame.mixer.music.fadeout(800)
+    menu_music_playing = False
+    
+    # Spielstand laden (gleiche Logik wie restore_game)
+    current_room = data['current_room']
+    player_inventory.clear()
+    player_inventory.extend(data['player_inventory'])
+    player_stats.update(data['player_stats'])
+    game_score = data.get('game_score', 0)
+    game_moves = data.get('game_moves', 0)
+    view_mode = data.get('view_mode', 'verbose')
+    visited_rooms.clear()
+    visited_rooms.update(data.get('visited_rooms', []))
+    visited_rooms_desc.clear()
+    visited_rooms_desc.update(data.get('visited_rooms_desc', []))
+    for rk, items_list in data.get('room_items', {}).items():
+        if rk in rooms:
+            rooms[rk]['items'] = items_list
+    for ik, cstate in data.get('container_states', {}).items():
+        if ik in ITEM_DEFS and ITEM_DEFS[ik].is_container:
+            ITEM_DEFS[ik].contents = cstate.get('contents', [])
+            ITEM_DEFS[ik].is_open = cstate.get('is_open', False)
+    for t in TRANSITIONS:
+        if t['id'] in data.get('transition_locks', {}):
+            t['locked'] = data['transition_locks'][t['id']]
+    bibliothek_4_schrank_geschoben = data.get('bibliothek_4_schrank_geschoben', False)
+    haus1_tür_auf = data.get('haus1_tür_auf', False)
+    for ik, charge_val in data.get('item_charges', {}).items():
+        if ik in ITEM_DEFS:
+            ITEM_DEFS[ik].charge = charge_val
+    elapsed = data.get('elapsed_ms', 0)
+    game_start_ticks = pygame.time.get_ticks() - elapsed
+    scored_items = set(data.get('scored_items', []))
+    scored_kills = set(data.get('scored_kills', []))
+    
+    add_to_history("Spielstand geladen.")
+    add_to_history("")
+    describe_room()
 
 def show_options():
     global current_state
@@ -3750,9 +3824,14 @@ def draw_menu(current_time):
     _draw_gradient_line(screen, center_x, line_y, line_half, DARK_RED)
     
     # Aktualisiere Button-Positionen basierend auf aktueller Auflösung
-    menu_buttons[0].pos = (center_x, scale_y(320))
-    menu_buttons[1].pos = (center_x, scale_y(420))
-    menu_buttons[2].pos = (center_x, scale_y(520))
+    menu_buttons[0].pos = (center_x, scale_y(280))
+    menu_buttons[1].pos = (center_x, scale_y(370))
+    menu_buttons[2].pos = (center_x, scale_y(460))
+    menu_buttons[3].pos = (center_x, scale_y(550))
+    
+    # "LADEN" Button deaktivieren wenn kein Spielstand vorhanden
+    save_exists = os.path.exists(SAVE_FILE)
+    menu_buttons[1].disabled = not save_exists
     
     mouse_pos = pygame.mouse.get_pos()
     
@@ -3779,9 +3858,10 @@ def draw_menu(current_time):
 
 # Menu-Buttons (initiale Positionen, werden in draw_menu dynamisch aktualisiert)
 menu_buttons = [
-    MenuButton("NEUES SPIEL", (WIDTH // 2, 350), start_game),
-    MenuButton("OPTIONEN", (WIDTH // 2, 450), show_options),
-    MenuButton("BEENDEN", (WIDTH // 2, 550), quit_game)
+    MenuButton("NEUES SPIEL", (WIDTH // 2, 300), start_game),
+    MenuButton("LADEN", (WIDTH // 2, 390), load_game_from_menu),
+    MenuButton("OPTIONEN", (WIDTH // 2, 480), show_options),
+    MenuButton("BEENDEN", (WIDTH // 2, 570), quit_game)
 ]
 
 options_buttons = [
