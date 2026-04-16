@@ -151,6 +151,10 @@ last_backspace_time = 0
 bibliothek_4_schrank_geschoben = False
 #Haus1 Tür
 haus1_tür_auf = False
+#Haus1 Dachbodentür
+haus1_dachbodentür_auf = False
+#Haus1 boxes
+haus1_dachboden_box_geschoben = False
 
 # Key-Repeat für Cursor-Tasten
 delete_held = False
@@ -270,6 +274,7 @@ ITEM_DEFS = {
     'tagebuch': Item('tagebuch', 'Tagebuch', 'Dein persönliches Tagebuch.', weight=1),
     'stück papier': Item('stück papier', 'Stück Papier', 'Ein blutiges Stück Papier.', weight=1),
     'taschenlampe': Item('taschenlampe', 'Taschenlampe', 'Eine Taschenlampe.', weight=2, charge=100),
+    'goldener_pfeil': Item('goldener_pfeil', 'Goldener Pfeil', 'Ein uralter, golden schimmernder Pfeil. Er strahlt eine unheimliche Energie aus.', weight=1),
     # --- SELTENE CONTAINER ---
     'rucksack': Item('rucksack', 'Rucksack', 'Ein robuster Militärrucksack.',
                      is_container=True, capacity=8, is_open=False, is_transparent=False, weight=3),
@@ -933,7 +938,7 @@ rooms = {
         'name': 'Wohnbereich',
         'description': '.',
         'exits': {'osten': 'haus_3_v', 'norden': 'küche_h3', 'süden': 'bathroom_3', 'westen': 'bedroom_3'},
-        'items': [],
+        'items': ['Gehstock'],
         'in_development': True
     },
     'wohnzimmer_h3': {#Haus3
@@ -1101,6 +1106,76 @@ rooms = {
         'name': 'Haus 1 - Vordertür',
         'description': 'Du stehst im Eingangsbereich von Haus 1. Es riecht muffig und der Boden knarzt unter deinen Füßen.',
         'exits': {'westen': 'haus1'},
+        'items': [],
+        'in_development': True
+    },
+    'haus1_Flur': {#Haus1
+        'name': 'Haus 1 - Flur',
+        'description': 'Du stehst im Eingangsbereich von Haus 1. Es riecht muffig und der Boden knarzt unter deinen Füßen.',
+        'exits': {'Norden': 'haus1_vordertür', 'Süden': 'haus1_wohnzimmer', 'Osten': 'haus1_Flur2'},
+        'items': [],
+        'in_development': True
+    },
+    'haus1_Flur2': {#Haus1
+        'name': 'Haus 1 - Flur2',
+        'description': 'Du stehst im Eingangsbereich von Haus 1. Es riecht muffig und der Boden knarzt unter deinen Füßen.',
+        'exits': {'Süden': 'haus1_dachbodentür', 'Osten': 'haus1_Flur3', 'Westen': 'haus1_schlafzimmer2'},
+        'items': [],
+        'in_development': True
+    },
+    'haus1_dachbodentür': {#Haus1
+        'name': 'Haus 1 - Dachbodeneingang',
+        'description': 'Du stehst im Eingangsbereich von Haus 1. Es riecht muffig und der Boden knarzt unter deinen Füßen.',
+        'exits': {'Norden': 'haus1_Flur', 'Up': 'haus1_dachboden'},
+        'items': [],
+        'in_development': True
+    },
+    'haus1_dachboden': {#Haus1
+        'name': 'Haus 1 - Dachboden',
+        'description': 'Du stehst im Eingangsbereich von Haus 1. Es riecht muffig und der Boden knarzt unter deinen Füßen.',
+        'exits': {'Down': 'haus1_dachbodentür'},
+        'items': [],
+        'in_development': True
+    },
+    'haus1_wohnzimmer': {#Haus1
+        'name': 'Haus 1 - Wohnzimmer',
+        'description': 'Du stehst im Eingangsbereich von Haus 1. Es riecht muffig und der Boden knarzt unter deinen Füßen.',
+        'exits': {'Norden': 'haus1_Flur'},
+        'items': [],
+        'in_development': True
+    },
+    'haus1_schlafzimmer2': {#Haus1
+        'name': 'Haus 1 - Schlafzimmer 2',
+        'description': 'Du stehst im Eingangsbereich von Haus 1. Es riecht muffig und der Boden knarzt unter deinen Füßen.',
+        'exits': {'Osten': 'haus1_Flur2'},
+        'items': [],
+        'in_development': True
+    },
+    'haus1_schlafzimmer': {#Haus1
+        'name': 'Haus 1 - Schlafzimmer',
+        'description': 'Du stehst im Eingangsbereich von Haus 1. Es riecht muffig und der Boden knarzt unter deinen Füßen.',
+        'exits': {'Süden': 'haus1_Flur3'},
+        'items': [],
+        'in_development': True
+    },
+    'haus1_badezimmer': {#Haus1
+        'name': 'Haus 1 - Badezimmer',
+        'description': 'Du stehst im Eingangsbereich von Haus 1. Es riecht muffig und der Boden knarzt unter deinen Füßen.',
+        'exits': {'Westen': 'haus1_Flur3'},
+        'items': [],
+        'in_development': True
+    },
+    'haus1_küche': {#Haus1
+        'name': 'Haus 1 - Küche',
+        'description': 'Du stehst im Eingangsbereich von Haus 1. Es riecht muffig und der Boden knarzt unter deinen Füßen.',
+        'exits': {'Norden': 'haus1_Flur3'},
+        'items': [],
+        'in_development': True
+    },
+    'haus1_Flur3': {#Haus1
+        'name': 'Haus 1 - Flur3',
+        'description': 'Du stehst im Eingangsbereich von Haus 1. Es riecht muffig und der Boden knarzt unter deinen Füßen.',
+        'exits': {'Norden': 'haus1_schlafzimmer', 'Westen': 'haus1_Flur2', 'Süden': 'haus1_küche', 'Osten': 'haus1_badezimmer'},
         'items': [],
         'in_development': True
     },
