@@ -623,6 +623,24 @@ def handle_interaction_commands(cmd):
             _h("")
         return True
 
+    if cmd in (''):
+        if _game.current_room == 'haus1_dachboden' and 'Safe Combination' in _game.player_inventory:
+            if not _game.haus1_dachboden_box_geschoben:
+                _game.haus1_dachboden_box_geschoben = True
+                _game.unlock_transition('haus1_dachboden_box')
+                _h("")
+                _h("")
+                _h("")
+                _h("")
+            else:
+                _h("")
+                _h("")
+        else:
+            _h("")
+            _h("")
+        return True
+
+
     return False
 
 
