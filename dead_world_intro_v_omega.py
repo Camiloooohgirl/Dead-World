@@ -27,6 +27,34 @@ for _zs_file in sorted(os.listdir(ZOMBIE_SOUND_DIR)):
     if _zs_file.endswith(('.mp3', '.wav', '.ogg')):
         ZOMBIE_SOUNDS.append(pygame.mixer.Sound(os.path.join(ZOMBIE_SOUND_DIR, _zs_file)))
 
+# Punch Sounds - zufällige Sounds beim Schlagen eines Zombies
+PUNCH_SOUND_DIR = os.path.join(BASE_DIR, "Game_music", "Punch_Sounds")
+PUNCH_SOUNDS = []
+for _ps_file in sorted(os.listdir(PUNCH_SOUND_DIR)):
+    if _ps_file.endswith(('.mp3', '.wav', '.ogg')):
+        PUNCH_SOUNDS.append(pygame.mixer.Sound(os.path.join(PUNCH_SOUND_DIR, _ps_file)))
+
+def play_random_punch_sound():
+    """Spielt einen zufälligen Punch-Sound ab"""
+    if PUNCH_SOUNDS:
+        sound = random.choice(PUNCH_SOUNDS)
+        sound.set_volume(game_settings.get('sfx_volume', 0.7))
+        sound.play(maxtime=3000)
+
+# Gun Sounds - zufällige Sounds beim Schießen
+GUN_SOUND_DIR = os.path.join(BASE_DIR, "Game_music", "Gun Sounds")
+GUN_SOUNDS = []
+for _gs_file in sorted(os.listdir(GUN_SOUND_DIR)):
+    if _gs_file.endswith(('.mp3', '.wav', '.ogg')):
+        GUN_SOUNDS.append(pygame.mixer.Sound(os.path.join(GUN_SOUND_DIR, _gs_file)))
+
+def play_random_gun_sound():
+    """Spielt einen zufälligen Gun-Sound ab"""
+    if GUN_SOUNDS:
+        sound = random.choice(GUN_SOUNDS)
+        sound.set_volume(game_settings.get('sfx_volume', 0.7))
+        sound.play(maxtime=3000)
+
 def play_random_zombie_sound():
     """Spielt einen zufälligen Zombie-Sound ab"""
     global _current_zombie_sound
@@ -2959,6 +2987,7 @@ def ranged_attack(target):
         return
     
     # Schussberechnung
+    play_random_gun_sound()
     add_to_history(f"Du legst die {weapon['name']} an...")
     
     # Trefferchance basierend auf Entfernung
@@ -3261,6 +3290,7 @@ def unarmed_attack(target):
                 'target': 'zombie'
             })
         elif 'fäuste' in player_inventory:
+            play_random_punch_sound()
             add_to_history("Du schlägst mit bloßen Fäusten!")
             add_to_history("")
             start_qte_sequence('melee_strike', {
@@ -3280,6 +3310,7 @@ def unarmed_attack(target):
                 'target': 'zombie'
             })
         else:
+            play_random_punch_sound()
             add_to_history("Du schlägst mit bloßen Fäusten!")
             add_to_history("Der Zombie weicht kaum zurück.")
             add_to_history("Du brauchst eine Waffe!")
@@ -3292,6 +3323,7 @@ def unarmed_attack(target):
             add_to_history("")
             return
         
+        play_random_punch_sound()
         add_to_history("Du schlägst mit bloßen Fäusten!")
         add_to_history("")
         start_qte_sequence('melee_strike', {
