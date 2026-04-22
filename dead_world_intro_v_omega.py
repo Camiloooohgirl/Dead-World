@@ -27,34 +27,6 @@ for _zs_file in sorted(os.listdir(ZOMBIE_SOUND_DIR)):
     if _zs_file.endswith(('.mp3', '.wav', '.ogg')):
         ZOMBIE_SOUNDS.append(pygame.mixer.Sound(os.path.join(ZOMBIE_SOUND_DIR, _zs_file)))
 
-# Punch Sounds - zufällige Sounds beim Schlagen eines Zombies
-PUNCH_SOUND_DIR = os.path.join(BASE_DIR, "Game_music", "Punch_Sounds")
-PUNCH_SOUNDS = []
-for _ps_file in sorted(os.listdir(PUNCH_SOUND_DIR)):
-    if _ps_file.endswith(('.mp3', '.wav', '.ogg')):
-        PUNCH_SOUNDS.append(pygame.mixer.Sound(os.path.join(PUNCH_SOUND_DIR, _ps_file)))
-
-def play_random_punch_sound():
-    """Spielt einen zufälligen Punch-Sound ab"""
-    if PUNCH_SOUNDS:
-        sound = random.choice(PUNCH_SOUNDS)
-        sound.set_volume(game_settings.get('sfx_volume', 0.7))
-        sound.play(maxtime=3000)
-
-# Gun Sounds - zufällige Sounds beim Schießen
-GUN_SOUND_DIR = os.path.join(BASE_DIR, "Game_music", "Gun Sounds")
-GUN_SOUNDS = []
-for _gs_file in sorted(os.listdir(GUN_SOUND_DIR)):
-    if _gs_file.endswith(('.mp3', '.wav', '.ogg')):
-        GUN_SOUNDS.append(pygame.mixer.Sound(os.path.join(GUN_SOUND_DIR, _gs_file)))
-
-def play_random_gun_sound():
-    """Spielt einen zufälligen Gun-Sound ab"""
-    if GUN_SOUNDS:
-        sound = random.choice(GUN_SOUNDS)
-        sound.set_volume(game_settings.get('sfx_volume', 0.7))
-        sound.play(maxtime=3000)
-
 def play_random_zombie_sound():
     """Spielt einen zufälligen Zombie-Sound ab"""
     global _current_zombie_sound
@@ -183,6 +155,13 @@ haus1_tür_auf = False
 haus1_dachbodentür_auf = False
 #Haus1 boxes
 haus1_dachboden_box_geschoben = False
+#Haus1 Nachttisch
+nachtschrank_auf = False
+#Safe
+safe_auf_haus1 = False
+safe_durchsucht_haus1 = False
+#krankenhaus
+krankenhaus_flur_access = False
 
 # Key-Repeat für Cursor-Tasten
 delete_held = False
@@ -697,13 +676,28 @@ rooms = {
         'exits': {'norden': 'westliche_haus_gabelung', 'westen': 'krankenhaus_eingang', 'süden': 'home_depot_weggabelung_nord_ost'},
         'items': [],
         'in_development': False,
-        'spawn_chance': False,
+        'spawn_chance': True,
         'zombie_spawn': False
     },
     'krankenhaus_eingang': {#Krankenhaus
         'name': 'Krankenhaus Eingang',
         'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
-        'exits': {'osten': 'krankenhaus_straße'},
+        'exits': {'osten': 'krankenhaus_straße', 'Westen': 'krankenhaus_wartebereich'},
+        'items': [],
+        'in_development': False
+
+    },
+    'krankenhaus_wartebereich': {#Krankenhaus
+        'name': 'Krankenhaus - Wartebereich',
+        'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
+        'exits': {'osten': 'krankenhaus_eingang','Westen': 'krankenhaus_flur'},
+        'items': [],
+        'in_development': False
+    },
+    'krankenhaus_flur': {#Krankenhaus
+        'name': 'Krankenhaus - Flur',
+        'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
+        'exits': {'osten': 'krankenhaus_wartebereich'},
         'items': [],
         'in_development': False
     },
@@ -1154,14 +1148,14 @@ rooms = {
     'haus1_dachbodentür': {#Haus1
         'name': 'Haus 1 - Dachbodeneingang',
         'description': 'Du stehst im Eingangsbereich von Haus 1. Es riecht muffig und der Boden knarzt unter deinen Füßen.',
-        'exits': {'Norden': 'haus1_Flur', 'Up': 'haus1_dachboden'},
+        'exits': {'Norden': 'haus1_Flur', 'Hoch': 'haus1_dachboden'},
         'items': [],
         'in_development': True
     },
     'haus1_dachboden': {#Haus1
         'name': 'Haus 1 - Dachboden',
         'description': 'Du stehst im Eingangsbereich von Haus 1. Es riecht muffig und der Boden knarzt unter deinen Füßen.',
-        'exits': {'Down': 'haus1_dachbodentür'},
+        'exits': {'Runter': 'haus1_dachbodentür'},
         'items': [],
         'in_development': True
     },
@@ -3062,7 +3056,6 @@ def ranged_attack(target):
         return
     
     # Schussberechnung
-    play_random_gun_sound()
     add_to_history(f"Du legst die {weapon['name']} an...")
     
     # Trefferchance basierend auf Entfernung
@@ -3365,7 +3358,6 @@ def unarmed_attack(target):
                 'target': 'zombie'
             })
         elif 'fäuste' in player_inventory:
-            play_random_punch_sound()
             add_to_history("Du schlägst mit bloßen Fäusten!")
             add_to_history("")
             start_qte_sequence('melee_strike', {
@@ -3385,7 +3377,6 @@ def unarmed_attack(target):
                 'target': 'zombie'
             })
         else:
-            play_random_punch_sound()
             add_to_history("Du schlägst mit bloßen Fäusten!")
             add_to_history("Der Zombie weicht kaum zurück.")
             add_to_history("Du brauchst eine Waffe!")
@@ -3398,7 +3389,6 @@ def unarmed_attack(target):
             add_to_history("")
             return
         
-        play_random_punch_sound()
         add_to_history("Du schlägst mit bloßen Fäusten!")
         add_to_history("")
         start_qte_sequence('melee_strike', {
