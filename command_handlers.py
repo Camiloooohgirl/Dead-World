@@ -623,26 +623,79 @@ def handle_interaction_commands(cmd):
             _h("")
         return True
 
-    if cmd in (''):
-        if _game.current_room == 'haus1_dachboden' and 'Safe Combination' in _game.player_inventory:
-            if not _game.haus1_dachboden_box_geschoben:
-                _game.haus1_dachboden_box_geschoben = True
-                _game.unlock_transition('haus1_dachboden_box')
+    if cmd in ('Nachtschrank öffnen', 'öffne nachtschrank', 'Nachtschrank auf', 'öffne nachtschrank'):
+        if _game.current_room == 'haus1_schlafzimmer':
+            if not _game.nachtschrank_auf:
+                _game.nachtschrank_auf = True
+                _game.unlock_transition('haus1_schlafzimmer_nachtschrank')
+                _h("Du ziehst die Schublade des Nachtschrankes auf")
+                _h("Ein zettel liegt drin")
+                _h("Auf dem Zettel steht die Kombination für einen safe")
                 _h("")
+            else:
+                _h("Die Schublade ist bereits auf")
+                _h("")
+        else:
+            _h("Hier gibt es keinen Nachtschrank.")
+            _h("")
+        return True
+    
+    if cmd in ('Safe öffnen', 'Öffne Safe', 'Safe auf machen'):
+        if _game.current_room == 'haus1_dachboden' and _game.nachtschrank_auf == True :
+            if not _game.safe_auf:
+                _game.safe_auf = True
+                _game.unlock_transition('haus1_dachboden_safe')
+                _h("Du gibst die Combinationen ein")
+                _h("Je richtige zahl ertönt ein leises klicken")
+                _h("Nach der richtigen Combination hörst du ein lauten klick")
+                _h("")
+            else:
+                _h("Das Safe ist bereits auf")
+                _h("")
+        else:
+            _h("Es gibt hier keinen safe.")
+            _h("")
+        return True
+
+    if cmd in ('Safe durchsuchen', 'Durchsuche Safe', 'Durchsuche den safe'):
+        if _game.current_room == 'haus1_dachboden' and _game.safe_auf_haus1 == True and _game.safe_durchsucht_haus1 == False :
+            if not _game.safe_durchsucht_haus1:
+                _game.safe_durchsucht_haus1 = True
+                _game.unlock_transition('haus1_dachboden_safe')
+                _h("Im Safe liegen 50 ammo,")
                 _h("")
                 _h("")
                 _h("")
             else:
-                _h("")
+                _h("Das Safe ist bereits durchsucht")
                 _h("")
         else:
-            _h("")
+            _h("Es gibt hier keinen safe.")
             _h("")
         return True
 
 
-    return False
+    if _game.current_room == 'krankenahus_wartebereich' and _game.krankenhaus_flur_access == True :
+        if not _game.krankenhaus_flur_access :
+            _game.unlock_transition('krankenhaus_flur')
+            _h("Der Gang zum Flur ist Frei")
+            _h("Du hörst viele Zombies aus dem Rest des Gebäudes kreischen")
+            _h("")
+        else:
+            _h("Der durchgang ist Barrikadiert, du siehst wie Tische und Stühle auf der anderen seite die Tür blockieren")
+            _h("")
+        return True
 
+    if _game.score >= 500 :
+        _game.krankenhaus_flur_access = True
+        _game.unlock_transition('krankenhaus_flur')
+        _h("Aus der Ferne hörst du einen lauten knall")
+        _h("Es hört sich an als käme es aus den Krankenhaus")
+        _h("Villeicht solltest du nachsehen")
+        _h("")
+        return True
+
+    return False
 
 # ========================
 # CONTAINER COMMANDS
