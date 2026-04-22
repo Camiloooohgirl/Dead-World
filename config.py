@@ -9,17 +9,17 @@ import os
 # ========================
 # SCREEN & DISPLAY
 # ========================
-WIDTH, HEIGHT = 1900, 1000
+WIDTH, HEIGHT = 1680, 1050
 FPS = 60
-REFERENCE_WIDTH = 1280
-REFERENCE_HEIGHT = 720
+REFERENCE_WIDTH = 1680    
+REFERENCE_HEIGHT = 1050
 
 # Resolution Presets (Name, Breite, Höhe)
 RESOLUTION_PRESETS = [
     ('Sehr Niedrig', 800, 450),
     ('Niedrig', 1024, 576),
     ('Mittel', 1280, 720),
-    ('Hoch', 1600, 900),
+    ('Hoch', 1680, 1050),
     ('Sehr Hoch', 1920, 1080)
 ]
 

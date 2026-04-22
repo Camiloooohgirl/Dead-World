@@ -74,7 +74,7 @@ def stop_zombie_sounds():
         _current_zombie_sound = None
 
 # Scaling-Funktionen und Font-Cache in render_utils.py
-current_resolution_index = 2  # Standard: Mittel (1280x720)
+current_resolution_index = 3  # Standard: Hoch (1680x1050)
 
 # Fenster erstellen
 screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)
@@ -153,7 +153,7 @@ game_settings = {
     'music_volume': 0.05,
     'sfx_volume': 0.05,
     'difficulty': 'Normal',
-    'resolution': 2  # Index in RESOLUTION_PRESETS
+    'resolution': 3  # Index in RESOLUTION_PRESETS
 }
 
 # Text Adventure Game Data
