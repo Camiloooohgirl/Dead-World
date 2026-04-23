@@ -45,6 +45,57 @@ def stop_zombie_sounds():
         _current_zombie_sound.stop()
         _current_zombie_sound = None
 
+# Gun Sounds - für Schusswaffen
+GUN_SOUND_DIR = os.path.join(BASE_DIR, "Game_music", "Gun Sounds")
+GUN_SOUNDS = []
+for _gs_file in sorted(os.listdir(GUN_SOUND_DIR)):
+    if _gs_file.endswith(('.mp3', '.wav', '.ogg')):
+        try:
+            GUN_SOUNDS.append(pygame.mixer.Sound(os.path.join(GUN_SOUND_DIR, _gs_file)))
+        except Exception:
+            pass
+
+# Punch/Melee Sounds - für Nahkampf
+PUNCH_SOUND_DIR = os.path.join(BASE_DIR, "Game_music", "Punch_Sounds")
+PUNCH_SOUNDS = []
+for _ps_file in sorted(os.listdir(PUNCH_SOUND_DIR)):
+    if _ps_file.endswith(('.mp3', '.wav', '.ogg')):
+        try:
+            PUNCH_SOUNDS.append(pygame.mixer.Sound(os.path.join(PUNCH_SOUND_DIR, _ps_file)))
+        except Exception:
+            pass
+
+_current_gun_sound = None
+_current_punch_sound = None
+
+def play_random_gun_sound():
+    """Spielt einen zufälligen Schuss-Sound ab"""
+    global _current_gun_sound
+    if GUN_SOUNDS:
+        sound = random.choice(GUN_SOUNDS)
+        sound.set_volume(game_settings.get('sfx_volume', 0.7))
+        sound.play()
+        _current_gun_sound = sound
+
+def play_random_punch_sound():
+    """Spielt einen zufälligen Nahkampf-Sound ab"""
+    global _current_punch_sound
+    if PUNCH_SOUNDS:
+        sound = random.choice(PUNCH_SOUNDS)
+        sound.set_volume(game_settings.get('sfx_volume', 0.7))
+        sound.play()
+        _current_punch_sound = sound
+
+def stop_combat_sounds():
+    """Stoppt alle Kampf-Sounds"""
+    global _current_gun_sound, _current_punch_sound
+    if _current_gun_sound:
+        _current_gun_sound.stop()
+        _current_gun_sound = None
+    if _current_punch_sound:
+        _current_punch_sound.stop()
+        _current_punch_sound = None
+
 # Scaling-Funktionen und Font-Cache in render_utils.py
 current_resolution_index = 3  # Standard: Hoch (1680x1050)
 
@@ -122,8 +173,8 @@ options_selected_index = 0  # 0=Auflösung, 1=Musik, 2=Effekte
 
 # Game Settings
 game_settings = {
-    'music_volume': 0.05,
-    'sfx_volume': 0.05,
+    'music_volume': 0.15,
+    'sfx_volume': 0.15,
     'difficulty': 'Normal',
     'resolution': 3  # Index in RESOLUTION_PRESETS
 }
@@ -3172,6 +3223,7 @@ def ranged_attack(target):
     
     # Schuss
     weapon['ammo'] -= 1
+    play_random_gun_sound()
     
     if random.random() < hit_chance:
         # Berechne Schaden (Min-Max Range)
@@ -3205,6 +3257,7 @@ def enemy_counterattack(enemy):
     damage = random.randint(min_dmg, max_dmg)
     
     player_stats['health'] -= damage
+    play_random_punch_sound()
     add_to_history(f"{enemy['name']} greift an!")
     add_to_history(get_damage_reaction(damage, player_stats['health']))
     
@@ -3533,6 +3586,7 @@ def handle_melee_qte(success, data):
     got_black_flash = False  # Tracker für Level-Up
     
     if success:
+        play_random_punch_sound()
         # Für Fäuste: Nutze Level-basierte Stats (KEINE Crit-Chance!)
         if is_fists:
             fist_level = player_stats['fist_level']
@@ -3626,6 +3680,7 @@ def handle_melee_qte(success, data):
         min_dmg, max_dmg = enemy['damage']
         damage = random.randint(min_dmg, max_dmg)
         player_stats['health'] -= damage
+        play_random_punch_sound()
         add_to_history(f"Der Zombie beißt zu!")
         add_to_history(get_damage_reaction(damage, player_stats['health']))
         

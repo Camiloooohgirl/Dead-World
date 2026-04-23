@@ -686,7 +686,7 @@ def handle_interaction_commands(cmd):
             _h("")
         return True
 
-    if _game.score >= 500 :
+    if _game.game_score >= 500 :
         _game.krankenhaus_flur_access = True
         _game.unlock_transition('krankenhaus_flur')
         _h("Aus der Ferne hörst du einen lauten knall")
