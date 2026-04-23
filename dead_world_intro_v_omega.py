@@ -701,6 +701,111 @@ rooms = {
         'items': [],
         'in_development': False
     },
+    'krankenhaus_Rezeption': {#Krankenhaus
+        'name': 'Krankenhaus - Rezeption',
+        'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
+        'exits': {'osten': 'krankenhaus_wartebereich','westen': 'krankenhaus_flur_osten'},
+        'items': [],
+        'in_development': False
+    },
+    'krankenhaus_flur_osten': {#Krankenhaus
+        'name': 'Krankenhaus - Flur: Osten',
+        'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
+        'exits': {'Norden': 'krankenhaus_flur_nord_ost','westen': 'krankenhaus_flur_süden','osten': 'krankenhaus_Rezeption'},
+        'items': [],
+        'in_development': False
+    },
+    'krankenhaus_flur_nord_ost': {#Krankenhaus
+        'name': 'Krankenhaus - Flur: Nord-Ost',
+        'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
+        'exits': {'Westen': 'krankenhaus_flur_norden','Süden': 'krankenhaus_flur_osten'},
+        'items': [],
+        'in_development': False
+    },
+    'krankenhaus_flur_norden': {#Krankenhaus
+        'name': 'Krankenhaus - Flur: Norden',
+        'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
+        'exits': {'Westen': 'krankenhaus_labor_rezeption','osten': 'krankenhaus_flur_nord_ost'},
+        'items': [],
+        'in_development': False
+    },
+    'krankenhaus_labor_rezeption': {#Krankenhaus
+        'name': 'Krankenhaus - Labor Rezeption',
+        'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
+        'exits': {'Westen': 'krankenhaus_labor','osten': 'krankenhaus_flur_norden','Süden': 'krankenhaus_zwischen_flur'},
+        'items': [],
+        'in_development': False
+    },
+    'krankenhaus_Labor': {#Krankenhaus
+        'name': 'Krankenhaus - Flur: Osten',
+        'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
+        'exits': {'osten': 'krankenhaus_labor_rezeption'},
+        'items': [],
+        'in_development': False
+    },
+    'krankenhaus_zwischen_flur': {#Krankenhaus
+        'name': 'Krankenhaus - Zwischenflur',
+        'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
+        'exits': {'Norden': 'krankenhaus_labor_rezeption','Süden': 'krankenhaus_preperations_raum'},
+        'items': [],
+        'in_development': False
+    },
+    'krankenhaus_preperations_raum': {#Krankenhaus
+        'name': 'Krankenhaus - Vorbereitungs Raum',
+        'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
+        'exits': {'Süden': 'krankenhaus_OP_raum', 'osten': 'krankenhaus_flur_süd_westen'},
+        'items': [],
+        'in_development': False
+    },
+    'krankenhaus_OP_raum': {#Krankenhaus
+        'name': 'Krankenhaus - Operations Raum',
+        'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
+        'exits': {'Norden': 'krankenhaus_preperations_raum'},
+        'items': [],
+        'in_development': False
+    },
+    'krankenhaus_flur_süd_westen': {#Krankenhaus
+        'name': 'Krankenhaus - Flur: Süd-Westen',
+        'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
+        'exits': {'Norden': 'krankenhaus_flur_westen','Süden': 'krankenhaus_treppenhaus_flur', 'Westen': 'krankenhaus_preperations_raum'},
+        'items': [],
+        'in_development': False
+    },
+    'krankenhaus_flur_westen': {#Krankenhaus
+        'name': 'Krankenhaus - Flur: Westen',
+        'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
+        'exits': {'Norden': 'krankenhaus_flur_nord-westen_1','Süden': 'krankenhaus_flur_süd_westen'},
+        'items': [],
+        'in_development': False
+    },
+    'krankenhaus_flur_nord_westen_1': {#Krankenhaus
+        'name': 'Krankenhaus - Flur: Nord-Westen',
+        'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
+        'exits': {'Norden': 'krankenhaus_flur_nord-westen_2','Süden': 'krankenhaus_flur_westen'},
+        'items': [],
+        'in_development': False
+    },
+    'krankenhaus_flur_nord_westen_2': {#Krankenhaus
+        'name': 'Krankenhaus - Flur: Nord-Westen-2',
+        'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
+        'exits': {'Süden': 'krankenhaus_flur_nord_westen_1'},
+        'items': [],
+        'in_development': False
+    },
+    'krankenhaus_treppenhaus_flur': {#Krankenhaus
+        'name': 'Krankenhaus - Flur: Treppenhaus',
+        'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
+        'exits': {'Süden': 'krankenhaus_Treppe','Osten':'krankenhaus_kaputter_aufzug','Norden': 'krankenhaus_flur_süd_westen'},
+        'items': [],
+        'in_development': False
+    },
+    'krankenhaus_Treppe': {#Krankenhaus
+        'name': 'Krankenhaus - Treppe F1',
+        'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
+        'exits': {'hoch': 'krankenhaus_Treppe_F2','Norden': 'krankenhaus_treppenhaus_flur'},
+        'items': [],
+        'in_development': False
+    },
     'östliche_straße': {#stadt
         'name': 'Östliche Straße',
         'description': 'Kaputte Autos und Blutspuren bedecken die Straße. Im NORDEN liegt die nordöstliche Weggabelung. Im OSTEN steht ein verlassenes Haus. Nach SÜDEN geht es zur östlichen Weggabelung.',
