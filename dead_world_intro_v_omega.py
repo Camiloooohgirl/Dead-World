@@ -3257,7 +3257,11 @@ def enemy_counterattack(enemy):
     damage = random.randint(min_dmg, max_dmg)
     
     player_stats['health'] -= damage
-    play_random_punch_sound()
+    # Punch-Sound nur bei Nahkampf, Zombie-Sound bei Fernkampf-Gegenangriff
+    if player_stats.get('weapon_type') == 'ranged':
+        play_random_zombie_sound()
+    else:
+        play_random_punch_sound()
     add_to_history(f"{enemy['name']} greift an!")
     add_to_history(get_damage_reaction(damage, player_stats['health']))
     
