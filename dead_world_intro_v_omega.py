@@ -1641,259 +1641,34 @@ for _bk, _bd in BUILDING_HIERARCHY.items():
         for _rk in _fr:
             _room_to_container[_rk] = (_bk, _fk)
 
-# ===== DISCRETE TRANSITION NODES =====
-# Every connection between rooms is an explicit transition node.
-# type: 'door', 'passage', 'stairs', 'entrance', 'exit'
-# locked: if True, movement is blocked until unlocked
-# 
-# Wir definieren zuerst eine statische Liste wichtiger/verzierter Verbindungen
-# (mit festen IDs, Lock-Status, Spezial-Typen etc.). Danach erzeugen wir
-# automatisch zusätzliche Transition-Einträge für alle Exits in `rooms`, die
-# hier nicht explizit aufgeführt sind. Dadurch kannst du `rooms['exits']`
-# frei ändern/erweitern, und die Map passt sich automatisch an.
-STATIC_TRANSITIONS = [
-    # --- BUNKER ---
-    {'id': 'start_corridor', 'type': 'door', 'from': 'start', 'to': 'corridor',
-     'dir_from': 'norden', 'dir_to': 'süden', 'locked': True},
-    {'id': 'corridor_lab', 'type': 'door', 'from': 'corridor', 'to': 'laboratory',
-     'dir_from': 'osten', 'dir_to': 'westen'},
-    {'id': 'corridor_storage', 'type': 'door', 'from': 'corridor', 'to': 'storage',
-     'dir_from': 'westen', 'dir_to': 'osten'},
-    {'id': 'storage_tunnel', 'type': 'passage', 'from': 'storage', 'to': 'tunnel',
-     'dir_from': 'norden', 'dir_to': 'süden'},
-    # Bunker → Versteck (cross-building, triggers timeskip)
-    {'id': 'tunnel_spawn', 'type': 'passage', 'from': 'tunnel', 'to': 'spawn',
-     'dir_from': 'norden', 'dir_to': None, 'trigger': 'timeskip'},
-    # --- VERSTECK ERDGESCHOSS ---
-    {'id': 'schlaf_flur', 'type': 'door', 'from': 'schlafzimmer', 'to': 'flur',
-     'dir_from': 'süden', 'dir_to': 'norden'},
-    {'id': 'flur_bad', 'type': 'door', 'from': 'flur', 'to': 'badezimmer',
-     'dir_from': 'süden', 'dir_to': 'norden'},
-    {'id': 'flur_eingang', 'type': 'door', 'from': 'flur', 'to': 'eingangsbereich',
-     'dir_from': 'osten', 'dir_to': 'westen'},
-    {'id': 'eingang_wohnbereich', 'type': 'door', 'from': 'eingangsbereich', 'to': 'wohnbereich',
-     'dir_from': 'norden', 'dir_to': 'süden'},
-    {'id': 'eingang_wohnzimmer', 'type': 'door', 'from': 'eingangsbereich', 'to': 'wohnzimmer',
-     'dir_from': 'osten', 'dir_to': 'westen'},
-    {'id': 'eingang_vordertuer', 'type': 'door', 'from': 'eingangsbereich', 'to': 'vordertuer',
-     'dir_from': 'süden', 'dir_to': 'norden'},
-    {'id': 'wb_schlaf2', 'type': 'door', 'from': 'wohnbereich', 'to': 'schlafzimmer2',
-     'dir_from': 'südosten', 'dir_to': 'nordwesten'},
-    {'id': 'wb_kueche', 'type': 'door', 'from': 'wohnbereich', 'to': 'kueche',
-     'dir_from': 'osten', 'dir_to': 'westen'},
-    {'id': 'wb_treppen', 'type': 'passage', 'from': 'wohnbereich', 'to': 'treppen',
-     'dir_from': 'norden', 'dir_to': 'süden'},
-    # Versteck floor transition (stairs)
-    {'id': 'treppen_keller', 'type': 'stairs', 'from': 'treppen', 'to': 'keller',
-     'dir_from': 'runter', 'dir_to': 'hoch'},
-    {'id': 'keller_lager', 'type': 'door', 'from': 'keller', 'to': 'lagerraum',
-     'dir_from': 'süden', 'dir_to': 'norden'},
-    # Versteck exit → Stadt
-    {'id': 'vordertuer_strasse', 'type': 'entrance', 'from': 'vordertuer', 'to': 'suedlich_haus',
-     'dir_from': 'süden', 'dir_to': 'norden'},
-    # --- STADT ---
-    {'id': 'sued_west', 'type': 'passage', 'from': 'suedlich_haus', 'to': 'westliche_haus_gabelung',
-     'dir_from': 'westen', 'dir_to': 'osten'},
-    {'id': 'sued_ost', 'type': 'passage', 'from': 'suedlich_haus', 'to': 'oestlich_weggabelung',
-     'dir_from': 'osten', 'dir_to': 'westen'},
-    {'id': 'sued_haus1', 'type': 'passage', 'from': 'suedlich_haus', 'to': 'haus1',
-     'dir_from': 'süden', 'dir_to': 'norden'},
-    {'id': 'west_nw', 'type': 'passage', 'from': 'westliche_haus_gabelung', 'to': 'nord_westliche_weggabelung',
-     'dir_from': 'norden', 'dir_to': 'süden'},
-    {'id': 'west_kh', 'type': 'passage', 'from': 'westliche_haus_gabelung', 'to': 'krankenhaus_straße',
-     'dir_from': 'süden', 'dir_to': 'norden'},
-    {'id': 'kh_str_eing', 'type': 'entrance', 'from': 'krankenhaus_straße', 'to': 'krankenhaus_eingang',
-     'dir_from': 'westen', 'dir_to': 'osten'},
-    {'id': 'kh_str_wart', 'type': 'entrance', 'from': 'krankenhaus_eingang', 'to': 'krankenhaus_wartebereich',
-     'dir_from': 'westen', 'dir_to': 'osten'},
-    {'id': 'nw_no', 'type': 'passage', 'from': 'nord_westliche_weggabelung', 'to': 'nord_östliche_weggabelung',
-     'dir_from': 'osten', 'dir_to': 'westen'},
-    {'id': 'ost_str_no', 'type': 'passage', 'from': 'östliche_straße', 'to': 'nord_östliche_weggabelung',
-     'dir_from': 'norden', 'dir_to': 'süden'},
-    {'id': 'nw_bib', 'type': 'passage', 'from': 'nord_westliche_weggabelung', 'to': 'bibliothek_straße',
-     'dir_from': 'westen', 'dir_to': 'osten'},
-    {'id': 'ost_str_ost_gab', 'type': 'passage', 'from': 'östliche_straße', 'to': 'oestlich_weggabelung',
-     'dir_from': 'süden', 'dir_to': 'westen'},
-    {'id': 'ost_gab_ost_str', 'type': 'passage', 'from': 'oestlich_weggabelung', 'to': 'östliche_straße',
-     'dir_from': 'norden', 'dir_to': 'süden'},
-    {'id': 'ost_gab_park', 'type': 'passage', 'from': 'oestlich_weggabelung', 'to': 'park_straße',
-     'dir_from': 'süden', 'dir_to': 'norden'},
-    {'id': 'park_sky', 'type': 'passage', 'from': 'park_straße', 'to': 'skyscraper_weggabelung',
-     'dir_from': 'süden', 'dir_to': 'norden'},
-    {'id': 'sky_pizzeria', 'type': 'passage', 'from': 'skyscraper_weggabelung', 'to': 'straße_pizzeria',
-     'dir_from': 'westen', 'dir_to': 'osten'},
-    {'id': 'pizzeria_homedepot', 'type': 'passage', 'from': 'straße_pizzeria', 'to': 'home_depot_weggabelung_nord_ost',
-     'dir_from': 'westen', 'dir_to': 'osten'},
+# ===== TRANSITIONS (abgeleitet aus exits) =====
+# Für Bewegung gilt nur noch rooms[room]['exits'].
+# Diese Liste existiert nur für die Karten-/Edge-Anzeige.
+def rebuild_transitions_from_exits():
+    transitions = []
+    for _from_room, _room_data in rooms.items():
+        for _dir_from, _to_room in _room_data.get('exits', {}).items():
+            if not _to_room or _to_room not in rooms:
+                continue
+            _dir_to = None
+            for _rev_dir, _rev_dest in rooms[_to_room].get('exits', {}).items():
+                if _rev_dest == _from_room:
+                    _dir_to = _rev_dir
+                    break
+            transitions.append({
+                'id': f'edge_{_from_room}_{_dir_from}',
+                'type': 'passage',
+                'from': _from_room,
+                'to': _to_room,
+                'dir_from': _dir_from,
+                'dir_to': _dir_to,
+                'locked': False,
+                'trigger': None,
+                'lock_msg': None,
+            })
+    return transitions
 
-    {'id': 'no_nord_str', 'type': 'passage', 'from': 'nord_östliche_weggabelung', 'to': 'norden_straße',
-     'dir_from': 'norden', 'dir_to': 'süden'},
-    {'id': 'no_parkplatz', 'type': 'passage', 'from': 'nord_östliche_weggabelung', 'to': 'parkplatz',
-     'dir_from': 'nord_osten', 'dir_to': 'süden'},
-    {'id': 'nord_str_park', 'type': 'passage', 'from': 'norden_straße', 'to': 'parkplatz',
-     'dir_from': 'osten', 'dir_to': 'westen'},
-    {'id': 'nord_str_h3', 'type': 'entrance', 'from': 'norden_straße', 'to': 'haus_3_eingang',
-     'dir_from': 'westen', 'dir_to': None},
-    # --- BIBLIOTHEK ---
-    {'id': 'bib_str_eing', 'type': 'entrance', 'from': 'bibliothek_straße', 'to': 'bibliothek_eingang',
-     'dir_from': 'norden', 'dir_to': 'süden'},
-    {'id': 'bib_eing_1', 'type': 'door', 'from': 'bibliothek_eingang', 'to': 'bibliothek_1.1',
-     'dir_from': 'norden', 'dir_to': 'süden'},
-    {'id': 'bib_1_12', 'type': 'passage', 'from': 'bibliothek_1.1', 'to': 'bibliothek_1.2',
-     'dir_from': 'westen', 'dir_to': 'osten'},
-    {'id': 'bib_1_2', 'type': 'passage', 'from': 'bibliothek_1.1', 'to': 'bibliothek_2',
-     'dir_from': 'osten', 'dir_to': 'westen'},
-    {'id': 'bib_2_3', 'type': 'passage', 'from': 'bibliothek_2', 'to': 'bibliothek_3',
-     'dir_from': 'norden', 'dir_to': 'süden'},
-    {'id': 'bib_3_4', 'type': 'passage', 'from': 'bibliothek_3', 'to': 'bibliothek_4',
-     'dir_from': 'norden', 'dir_to': 'süden', 'locked': True, 'lock_msg': 'Ein großes Bücherregal versperrt den Weg nach NORDEN.\nVielleicht kannst du es zur Seite schieben?'},
-    {'id': 'bib_4_5', 'type': 'passage', 'from': 'bibliothek_4', 'to': 'bibliothek_5',
-     'dir_from': 'westen', 'dir_to': 'osten'},
-    {'id': 'bib_5_6', 'type': 'passage', 'from': 'bibliothek_5', 'to': 'bibliothek_6',
-     'dir_from': 'süden', 'dir_to': 'norden'},
-    {'id': 'bib_6_7', 'type': 'passage', 'from': 'bibliothek_6', 'to': 'bibliothek_7',
-     'dir_from': 'westen', 'dir_to': 'osten'},
-    {'id': 'bib_7_8', 'type': 'passage', 'from': 'bibliothek_7', 'to': 'bibliothek_8',
-     'dir_from': 'norden', 'dir_to': 'süden'},
-    # --- WALMART ---
-    {'id': 'park_wm_eing', 'type': 'entrance', 'from': 'parkplatz', 'to': 'walmart_eingang',
-     'dir_from': 'norden', 'dir_to': 'süden'},
-    {'id': 'wm_e_1', 'type': 'passage', 'from': 'walmart_eingang', 'to': 'walmart_1',
-     'dir_from': 'norden', 'dir_to': 'süden'},
-    {'id': 'wm_1_2', 'type': 'passage', 'from': 'walmart_1', 'to': 'walmart_2',
-     'dir_from': 'westen', 'dir_to': 'osten'},
-    {'id': 'wm_2_3', 'type': 'passage', 'from': 'walmart_2', 'to': 'walmart_3',
-     'dir_from': 'norden', 'dir_to': 'süden'},
-    {'id': 'wm_3_4', 'type': 'passage', 'from': 'walmart_3', 'to': 'walmart_4',
-     'dir_from': 'osten', 'dir_to': 'westen'},
-    {'id': 'wm_4_5', 'type': 'passage', 'from': 'walmart_4', 'to': 'walmart_5',
-     'dir_from': 'osten', 'dir_to': 'westen'},
-    {'id': 'wm_5_6', 'type': 'passage', 'from': 'walmart_5', 'to': 'walmart_6',
-     'dir_from': 'norden', 'dir_to': 'süden'},
-    {'id': 'wm_6_7', 'type': 'passage', 'from': 'walmart_6', 'to': 'walmart_7',
-     'dir_from': 'westen', 'dir_to': 'osten'},
-    {'id': 'wm_7_8', 'type': 'passage', 'from': 'walmart_7', 'to': 'walmart_8',
-     'dir_from': 'norden', 'dir_to': 'süden'},
-    {'id': 'wm_8_9', 'type': 'passage', 'from': 'walmart_8', 'to': 'walmart_9',
-     'dir_from': 'norden', 'dir_to': 'süden'},
-    {'id': 'wm_9_10', 'type': 'passage', 'from': 'walmart_9', 'to': 'walmart_10',
-     'dir_from': 'osten', 'dir_to': 'westen'},
-    {'id': 'wm_10_11', 'type': 'passage', 'from': 'walmart_10', 'to': 'walmart_11',
-     'dir_from': 'süden', 'dir_to': 'norden'},
-    {'id': 'wm_11_121', 'type': 'passage', 'from': 'walmart_11', 'to': 'walmart_12.1',
-     'dir_from': 'westen', 'dir_to': 'norden'},
-    {'id': 'wm_11_122', 'type': 'passage', 'from': 'walmart_11', 'to': 'walmart_12.2',
-     'dir_from': 'süden', 'dir_to': 'norden'},
-    {'id': 'wm_121_13', 'type': 'passage', 'from': 'walmart_12.1', 'to': 'walmart_13',
-     'dir_from': 'süden', 'dir_to': 'norden'},
-    {'id': 'wm_13_14', 'type': 'passage', 'from': 'walmart_13', 'to': 'walmart_14',
-     'dir_from': 'westen', 'dir_to': 'süden'},
-    # --- HAUS 1 ---
-    {'id': 'haus1_tuer', 'type': 'door', 'from': 'haus1', 'to': 'haus1_vordertür',
-     'dir_from': 'osten', 'dir_to': None, 'locked': True, 'lock_msg': 'Die Tür ist fest verschlossen.\nVielleicht kannst du sie aufbrechen?'},
-    # --- HAUS 3 ---
-    {'id': 'h3_eing_v', 'type': 'entrance', 'from': 'haus_3_eingang', 'to': 'haus_3_v',
-     'dir_from': 'westen', 'dir_to': 'osten'},
-    {'id': 'h3_v_wz', 'type': 'door', 'from': 'haus_3_v', 'to': 'wohnzimmer_h3',
-     'dir_from': 'norden', 'dir_to': 'süden'},
-    {'id': 'h3_v_wb', 'type': 'door', 'from': 'haus_3_v', 'to': 'haus_3_wohnbereich',
-     'dir_from': 'westen', 'dir_to': 'osten'},
-    {'id': 'h3_wb_kueche', 'type': 'door', 'from': 'haus_3_wohnbereich', 'to': 'küche_h3',
-     'dir_from': 'norden', 'dir_to': 'osten'},
-    {'id': 'h3_wb_bath', 'type': 'door', 'from': 'haus_3_wohnbereich', 'to': 'bathroom_3',
-     'dir_from': 'süden', 'dir_to': 'norden'},
-    {'id': 'h3_wb_bed', 'type': 'door', 'from': 'haus_3_wohnbereich', 'to': 'bedroom_3',
-     'dir_from': 'westen', 'dir_to': 'osten'},
-    {'id': 'h3_v_bed2', 'type': 'door', 'from': 'haus_3_v', 'to': 'bedroom_2',
-     'dir_from': 'süden', 'dir_to': 'norden'},
-    # --- HAUS 2 ---
-    {'id': 'ost_str_haus2', 'type': 'entrance', 'from': 'östliche_straße', 'to': 'haus2',
-     'dir_from': 'osten', 'dir_to': 'westen'},
-    # --- PARK ---
-    {'id': 'ost_gab_park_ort', 'type': 'passage', 'from': 'oestlich_weggabelung', 'to': 'park',
-     'dir_from': 'süd_osten', 'dir_to': 'westen'},
-    {'id': 'park_str_park', 'type': 'passage', 'from': 'park_straße', 'to': 'park',
-     'dir_from': 'osten', 'dir_to': 'norden'},
-    # --- NEUE STADT VERBINDUNGEN ---
-    {'id': 'nw_west', 'type': 'passage', 'from': 'nord_westliche_weggabelung', 'to': 'westliche_haus_gabelung',
-     'dir_from': 'süden', 'dir_to': 'norden'},
-    {'id': 'kh_homedepot', 'type': 'passage', 'from': 'krankenhaus_straße', 'to': 'home_depot_weggabelung_nord_ost',
-     'dir_from': 'süden', 'dir_to': 'norden'},
-    # --- SKYSCRAPER BEREICH ---
-    {'id': 'sky_sued_ost', 'type': 'passage', 'from': 'skyscraper_weggabelung', 'to': 'süd_östliche_skyscraper_weggabelung',
-     'dir_from': 'osten', 'dir_to': 'westen'},
-    {'id': 'sky_west_sky2', 'type': 'passage', 'from': 'skyscraper_weggabelung', 'to': 'westliche_skyscraper2_weggabelung',
-     'dir_from': 'süden', 'dir_to': 'norden'},
-    {'id': 'sued_ost_sky_ost_sky2', 'type': 'passage', 'from': 'süd_östliche_skyscraper_weggabelung', 'to': 'östliche_skyscraper2_straße',
-     'dir_from': 'süden', 'dir_to': 'norden'},
-    {'id': 'west_sky2_sued_pizza', 'type': 'passage', 'from': 'westliche_skyscraper2_weggabelung', 'to': 'südliche_pizzeria_straße',
-     'dir_from': 'westen', 'dir_to': 'osten'},
-    {'id': 'sued_pizza_hd_ost', 'type': 'passage', 'from': 'südliche_pizzeria_straße', 'to': 'home_depot_weggabelung_osten',
-     'dir_from': 'westen', 'dir_to': 'osten'},
-    # --- HOME DEPOT PERIMETER ---
-    {'id': 'hd_ost_hd_no', 'type': 'passage', 'from': 'home_depot_weggabelung_osten', 'to': 'home_depot_weggabelung_nord_ost',
-     'dir_from': 'norden', 'dir_to': None},
-    {'id': 'hd_ost_hd_so', 'type': 'passage', 'from': 'home_depot_weggabelung_osten', 'to': 'home_depot_weggabelung_süd_ost',
-     'dir_from': 'süden', 'dir_to': 'norden'},
-    {'id': 'hd_so_hd_sued', 'type': 'passage', 'from': 'home_depot_weggabelung_süd_ost', 'to': 'home_depot_straße_süd',
-     'dir_from': 'westen', 'dir_to': 'osten'},
-    {'id': 'hd_sued_hd_ws', 'type': 'passage', 'from': 'home_depot_straße_süd', 'to': 'home_depot_weggabelung_west_süd',
-     'dir_from': 'westen', 'dir_to': 'osten'},
-    {'id': 'hd_ws_hd_west', 'type': 'passage', 'from': 'home_depot_weggabelung_west_süd', 'to': 'home_depot_straße_west',
-     'dir_from': 'norden', 'dir_to': 'süden'},
-    {'id': 'hd_west_hd_wn', 'type': 'passage', 'from': 'home_depot_straße_west', 'to': 'home_depot_weggabelung_west_nord',
-     'dir_from': 'norden', 'dir_to': 'süden'},
-    {'id': 'hd_wn_hd_nord', 'type': 'passage', 'from': 'home_depot_weggabelung_west_nord', 'to': 'home_depot_straße_nord',
-     'dir_from': 'osten', 'dir_to': 'westen'},
-    {'id': 'hd_nord_hd_no', 'type': 'passage', 'from': 'home_depot_straße_nord', 'to': 'home_depot_weggabelung_nord_ost',
-     'dir_from': 'osten', 'dir_to': 'westen'},
-]
-
-# Automatisch generierte Transition-Liste auf Basis von `rooms`
-TRANSITIONS = []
-_seen_transition_keys = set()
-
-# 1) Alle statischen Transitionen übernehmen und Schlüssel merken
-for _t in STATIC_TRANSITIONS:
-    TRANSITIONS.append(_t)
-    _key = (_t.get('from'), _t.get('to'), _t.get('dir_from'))
-    _seen_transition_keys.add(_key)
-
-# 2) Für alle Exits in `rooms` automatisch Transitionen anlegen,
-#    wenn es noch keinen statischen Eintrag mit gleicher (from, to, dir_from) gibt.
-for _from_room, _room_data in rooms.items():
-    for _dir_from, _to_room in _room_data.get('exits', {}).items():
-        _key = (_from_room, _to_room, _dir_from)
-        if _key in _seen_transition_keys:
-            continue
-
-        # Gegenrichtung (dir_to) versuchen herzuleiten
-        _dir_to = None
-        _target_room = rooms.get(_to_room, {})
-        for _rev_dir, _rev_dest in _target_room.get('exits', {}).items():
-            if _rev_dest == _from_room:
-                _dir_to = _rev_dir
-                break
-
-        TRANSITIONS.append({
-            'id': f'auto_{_from_room}_{_dir_from}',
-            'type': 'passage',
-            'from': _from_room,
-            'to': _to_room,
-            'dir_from': _dir_from,
-            'dir_to': _dir_to,
-        })
-
-# Build transition lookup: room_key → list of transitions from that room
-_transitions_from = {}
-_transitions_by_id = {}
-for _t in TRANSITIONS:
-    _t.setdefault('locked', False)
-    _t.setdefault('trigger', None)
-    _t.setdefault('lock_msg', None)
-    _transitions_by_id[_t['id']] = _t
-    _transitions_from.setdefault(_t['from'], []).append(_t)
-    if _t.get('dir_to'):  # bidirectional
-        _transitions_from.setdefault(_t['to'], []).append(_t)
+TRANSITIONS = rebuild_transitions_from_exits()
 
 def get_room_context(room_key):
     """Returns (building_key, building_name, floor_key) for a room"""
@@ -1904,48 +1679,30 @@ def get_room_context(room_key):
     return ('unbekannt', 'Unbekannt', 'unbekannt')
 
 def get_transitions_from(room_key):
-    """Returns list of (direction, target_room, transition) from this room"""
+    """Returns list of (direction, target_room, transition) from this room."""
     result = []
-    for t in _transitions_from.get(room_key, []):
-        if t['from'] == room_key:
-            result.append((t['dir_from'], t['to'], t))
-        elif t['to'] == room_key and t.get('dir_to'):
-            result.append((t['dir_to'], t['from'], t))
+    room = rooms.get(room_key, {})
+    for d, target in room.get('exits', {}).items():
+        if target in rooms:
+            result.append((d, target, {'locked': False}))
     return result
 
 def try_transition(room_key, direction):
-    """Attempt to move from room_key in direction. Returns (success, target, transition, message)"""
-    for d, target, t in get_transitions_from(room_key):
-        if d == direction:
-            if t.get('locked'):
-                msg = t.get('lock_msg', 'Der Weg ist versperrt.')
-                return (False, None, t, msg)
-            return (True, target, t, None)
+    """Attempt to move from room_key in direction. Returns (success, target, transition, message)."""
+    room = rooms.get(room_key, {})
+    for d, target in room.get('exits', {}).items():
+        if d == direction and target in rooms:
+            return (True, target, {'locked': False, 'trigger': None}, None)
     return (False, None, None, 'Du kannst nicht in diese Richtung gehen.')
 
 def unlock_transition(transition_id):
-    """Unlocks a transition node by ID"""
-    t = _transitions_by_id.get(transition_id)
-    if t:
-        t['locked'] = False
+    """Kompatibilitätsfunktion (Transition-Locks wurden entfernt)."""
+    return None
 
 def reset_transitions():
-    """Resets all transitions to initial state"""
-    for t in TRANSITIONS:
-        if t['id'] == 'start_corridor':
-            t['locked'] = True
-        elif t['id'] == 'bib_3_4':
-            t['locked'] = True
-        elif t['id'] == 'haus1_dachbodentür':
-            t['locked'] = True
-        elif t['id'] == 'krankenhaus_geheim_treppe':
-            t['locked'] = True
-        elif t['id'] == '':
-            t['locked'] = True    
-        elif t['id'] == 'haus1_tür':
-            t['locked'] = True
-        else:
-            t['locked'] = False
+    """Kompatibilitätsfunktion (keine Transition-Locks mehr)."""
+    global TRANSITIONS
+    TRANSITIONS = rebuild_transitions_from_exits()
 
 
 def toggle_fullscreen():
@@ -2301,9 +2058,7 @@ def load_game_from_menu():
         if ik in ITEM_DEFS and ITEM_DEFS[ik].is_container:
             ITEM_DEFS[ik].contents = cstate.get('contents', [])
             ITEM_DEFS[ik].is_open = cstate.get('is_open', False)
-    for t in TRANSITIONS:
-        if t['id'] in data.get('transition_locks', {}):
-            t['locked'] = data['transition_locks'][t['id']]
+    TRANSITIONS[:] = rebuild_transitions_from_exits()
     bibliothek_4_schrank_geschoben = data.get('bibliothek_4_schrank_geschoben', False)
     haus1_tür_auf = data.get('haus1_tür_auf', False)
     for ik, charge_val in data.get('item_charges', {}).items():
@@ -2481,7 +2236,7 @@ def update_typewriter():
             _start_next_typewriter_line()
 
 def move_direction(direction):
-    """Bewege Spieler in eine Richtung (via Transition Nodes)"""
+    """Bewege Spieler in eine Richtung (via rooms['exits'])."""
     global current_room
     
     # Try to find and use a transition node
@@ -2495,8 +2250,8 @@ def move_direction(direction):
         add_to_history("")
         return
     
-    # Check for triggers on this transition
-    if transition and transition.get('trigger') == 'timeskip':
+    # Timeskip-Trigger jetzt direkt über Raum/Route statt Transition-Objekt
+    if rooms.get(current_room, {}).get('trigger_timeskip') and target == 'spawn':
         trigger_two_year_timeskip()
         return
     
@@ -3029,9 +2784,6 @@ def save_game():
                 'contents': idef.contents[:],
                 'is_open': idef.is_open
             }
-    transition_locks = {}
-    for t in TRANSITIONS:
-        transition_locks[t['id']] = t.get('locked', False)
     save_data = {
         'current_room': current_room,
         'player_inventory': player_inventory[:],
@@ -3043,7 +2795,6 @@ def save_game():
         'visited_rooms_desc': list(visited_rooms_desc),
         'room_items': room_items_state,
         'container_states': container_states,
-        'transition_locks': transition_locks,
         'elapsed_ms': pygame.time.get_ticks() - game_start_ticks,
         'bibliothek_4_schrank_geschoben': bibliothek_4_schrank_geschoben,
         'haus1_tür_auf': haus1_tür_auf,
@@ -3096,9 +2847,7 @@ def restore_game():
         if ik in ITEM_DEFS and ITEM_DEFS[ik].is_container:
             ITEM_DEFS[ik].contents = cstate.get('contents', [])
             ITEM_DEFS[ik].is_open = cstate.get('is_open', False)
-    for t in TRANSITIONS:
-        if t['id'] in data.get('transition_locks', {}):
-            t['locked'] = data['transition_locks'][t['id']]
+    TRANSITIONS[:] = rebuild_transitions_from_exits()
     bibliothek_4_schrank_geschoben = data.get('bibliothek_4_schrank_geschoben', False)
     haus1_tür_auf = data.get('haus1_tür_auf', False)
     # Restore item charges (light sources)
@@ -3478,6 +3227,7 @@ def enemy_counterattack(enemy):
         rooms['start']['items'] = ['feuerlöscher', 'zeitung']
         if 'norden' in rooms['start']['exits']:
             del rooms['start']['exits']['norden']
+        TRANSITIONS[:] = rebuild_transitions_from_exits()
         
         start_game()
 
@@ -3829,7 +3579,8 @@ def handle_melee_qte(success, data):
             
             # Raumspezifische Belohnungen
             if current_room == 'start':
-                unlock_transition('start_corridor')
+                rooms['start'].setdefault('exits', {})['norden'] = 'corridor'
+                TRANSITIONS[:] = rebuild_transitions_from_exits()
                 room['items'].append('taschenlampe')
                 add_to_history("Der Bunker ist still. Du bist vorerst sicher.")
                 add_to_history("Im NORDEN siehst du nun einen Korridor.")
@@ -3948,6 +3699,7 @@ def handle_dodge_qte(success):
             rooms['start']['items'] = ['feuerlöscher', 'zeitung']
             if 'norden' in rooms['start']['exits']:
                 del rooms['start']['exits']['norden']
+            TRANSITIONS[:] = rebuild_transitions_from_exits()
             
             start_game()
     
