@@ -676,7 +676,12 @@ def handle_interaction_commands(cmd):
             _h("")
         return True
 
-    if cmd in ('Schiebe schrank zur seite','Schrank schieben','Schiebe Schrank','Bewege Schrank'):
+    if cmd in (
+        'schiebe schrank zur seite',
+        'schrank schieben',
+        'schiebe schrank',
+        'bewege schrank',
+    ):
         if _game.current_room in ('krankenhaus_labor', 'krankenhaus_Labor'):
             if not _game.krankenhaus_schrank_geschoben:
                 _game.krankenhaus_schrank_geschoben = True
