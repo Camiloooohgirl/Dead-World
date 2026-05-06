@@ -25,7 +25,7 @@ wheels = [
 ]
 
 [[package]]
-name = "repl-nix-workspace"
+name = "dead-world"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

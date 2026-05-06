@@ -1,7 +1,7 @@
 [project]
-name = "repl-nix-workspace"
+name = "dead-world"
 version = "0.1.0"
-description = "Add your description here"
+description = "Dead World — a post-apocalyptic text adventure built with Pygame."
 requires-python = ">=3.12"
 dependencies = [
     "pygame>=2.6.1",
