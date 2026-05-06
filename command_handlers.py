@@ -265,6 +265,10 @@ def handle_item_commands(cmd):
         else:
             item = cmd[8:].strip()
 
+        # Raum-Objekt (kein Inventar-Item) -> an Interaktions-Handler weitergeben
+        if item in ('numpad', 'nummernpad', 'nummern pad'):
+            return False
+
         if item not in _game.player_inventory:
             _h(f"Du hast kein '{item}' im Inventar.")
             _h("")
@@ -701,6 +705,7 @@ def handle_interaction_commands(cmd):
         'benutze nummern pad',
         'nummern pad benutzen',
         'verwende nummern pad',
+        'verwende nummernpad',
         'benutze nummernpad',
         'nummernpad benutzen',
         'benutze numpad',
@@ -710,7 +715,13 @@ def handle_interaction_commands(cmd):
             if not _game.numpad_nutzen:
                 _game.numpad_nutzen = True
                 _h("")
-                codetry = int(input("Gib einen 6-stelligen Code ein... "))
+                try:
+                    codetry = int(input("Gib einen 6-stelligen Code ein... ").strip())
+                except (ValueError, EOFError):
+                    _game.numpad_nutzen = False
+                    _h("Ungueltige Eingabe. Bitte gib nur Zahlen ein.")
+                    _h("")
+                    return True
                 if codetry == 123456:
                     _h("Die Tür öffnet sich.")
                 elif codetry == 0:
