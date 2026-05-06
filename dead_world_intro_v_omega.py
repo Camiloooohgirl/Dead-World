@@ -1645,7 +1645,13 @@ for _bk, _bd in BUILDING_HIERARCHY.items():
 # Every connection between rooms is an explicit transition node.
 # type: 'door', 'passage', 'stairs', 'entrance', 'exit'
 # locked: if True, movement is blocked until unlocked
-TRANSITIONS = [
+# 
+# Wir definieren zuerst eine statische Liste wichtiger/verzierter Verbindungen
+# (mit festen IDs, Lock-Status, Spezial-Typen etc.). Danach erzeugen wir
+# automatisch zusätzliche Transition-Einträge für alle Exits in `rooms`, die
+# hier nicht explizit aufgeführt sind. Dadurch kannst du `rooms['exits']`
+# frei ändern/erweitern, und die Map passt sich automatisch an.
+STATIC_TRANSITIONS = [
     # --- BUNKER ---
     {'id': 'start_corridor', 'type': 'door', 'from': 'start', 'to': 'corridor',
      'dir_from': 'norden', 'dir_to': 'süden', 'locked': True},
@@ -1841,6 +1847,41 @@ TRANSITIONS = [
     {'id': 'hd_nord_hd_no', 'type': 'passage', 'from': 'home_depot_straße_nord', 'to': 'home_depot_weggabelung_nord_ost',
      'dir_from': 'osten', 'dir_to': 'westen'},
 ]
+
+# Automatisch generierte Transition-Liste auf Basis von `rooms`
+TRANSITIONS = []
+_seen_transition_keys = set()
+
+# 1) Alle statischen Transitionen übernehmen und Schlüssel merken
+for _t in STATIC_TRANSITIONS:
+    TRANSITIONS.append(_t)
+    _key = (_t.get('from'), _t.get('to'), _t.get('dir_from'))
+    _seen_transition_keys.add(_key)
+
+# 2) Für alle Exits in `rooms` automatisch Transitionen anlegen,
+#    wenn es noch keinen statischen Eintrag mit gleicher (from, to, dir_from) gibt.
+for _from_room, _room_data in rooms.items():
+    for _dir_from, _to_room in _room_data.get('exits', {}).items():
+        _key = (_from_room, _to_room, _dir_from)
+        if _key in _seen_transition_keys:
+            continue
+
+        # Gegenrichtung (dir_to) versuchen herzuleiten
+        _dir_to = None
+        _target_room = rooms.get(_to_room, {})
+        for _rev_dir, _rev_dest in _target_room.get('exits', {}).items():
+            if _rev_dest == _from_room:
+                _dir_to = _rev_dir
+                break
+
+        TRANSITIONS.append({
+            'id': f'auto_{_from_room}_{_dir_from}',
+            'type': 'passage',
+            'from': _from_room,
+            'to': _to_room,
+            'dir_from': _dir_from,
+            'dir_to': _dir_to,
+        })
 
 # Build transition lookup: room_key → list of transitions from that room
 _transitions_from = {}
