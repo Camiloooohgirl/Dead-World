@@ -676,13 +676,12 @@ def handle_interaction_commands(cmd):
             _h("")
         return True
 
-    if cmd in (
-        'schiebe schrank zur seite',
-        'schrank schieben',
-        'schiebe schrank',
-        'bewege schrank',
-    ):
-        if _game.current_room in ('krankenhaus_labor', 'krankenhaus_Labor'):
+    if 'schrank' in cmd and ('schieb' in cmd or 'bewege' in cmd):
+        in_hospital_labor_area = (
+            _game.current_room in ('krankenhaus_labor', 'krankenhaus_Labor')
+            or str(_game.current_room).startswith('krankenhaus_labor')
+        )
+        if in_hospital_labor_area:
             if not _game.krankenhaus_schrank_geschoben:
                 _game.krankenhaus_schrank_geschoben = True
                 _game.unlock_transition('krankenhaus_geheim_treppe')
@@ -693,6 +692,9 @@ def handle_interaction_commands(cmd):
             else:
                 _h("Der Schrank ist bereits aus dem Weg")
                 _h("")
+        elif str(_game.current_room).startswith('krankenhaus_'):
+            _h("Hier steht kein relevanter Schrank. Geh ins Krankenhaus-Labor.")
+            _h("")
         else:
             _h("Hier ist kein schrank zum Schieben")
             _h("")
@@ -716,7 +718,10 @@ def handle_interaction_commands(cmd):
         'benutze numpad',
         'numpad benutzen',
     ):
-        if _game.current_room in ('krankenhaus_geheim_treppe', 'krankenhaus_Labor', 'krankenhaus_labor') and _game.krankenhaus_schrank_geschoben:
+        if (
+            _game.current_room in ('krankenhaus_geheim_treppe', 'krankenhaus_Labor', 'krankenhaus_labor')
+            or str(_game.current_room).startswith('krankenhaus_labor')
+        ) and _game.krankenhaus_schrank_geschoben:
             if not _game.numpad_nutzen:
                 _game.numpad_nutzen = True
                 _h("")
