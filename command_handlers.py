@@ -697,7 +697,7 @@ def handle_interaction_commands(cmd):
         _h("Vielleicht solltest du nachsehen")
         _h("")
 
-    if cmd in ('Benutze Nummern Pad', 'Nummer Pad benutzen', 'Verwende Nummern Pad'):
+    if cmd in ('benutze nummern pad', 'nummern pad benutzen', 'verwende nummern pad', 'benutze nummernpad', 'nummernpad benutzen'):
         if _game.current_room == 'krankenhaus_geheim_treppe' and _game.krankenhaus_Schrank_geschoben:
             if not _game.numpad_nutzen:
                 _game.numpad_nutzen = True
