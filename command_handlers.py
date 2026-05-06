@@ -14,9 +14,7 @@ import pygame
 from config import *
 
 
-# ========================
-# MODULE STATE — set via init_handlers()
-# ========================
+
 _game = None  # Reference to main game module (set at runtime)
 
 
@@ -674,28 +672,47 @@ def handle_interaction_commands(cmd):
             _h("")
         return True
 
-
-    if _game.current_room == 'krankenahus_wartebereich' and _game.krankenhaus_flur_access == True :
-        if not _game.krankenhaus_flur_access :
-            _game.unlock_transition('krankenhaus_flur')
-            _h("Der Gang zum Flur ist Frei")
-            _h("Du hörst viele Zombies aus dem Rest des Gebäudes kreischen")
-            _h("")
+    if cmd in ('Schiebe schrank zur seite','Schrank schieben','Schiebe Schrank','Bewege Schrank'):
+        if _game.current_room == 'krankenhaus_labor' :
+            if not _game.krankenhaus_Schrank_geschoben:
+                _game.krankenhaus_Schrank_geschoben = True
+                _game.unlock_transition('krankenhaus_geheim_treppe')
+                _h("Du schiebst den Schrank zur Seite")
+                _h("Da hinter ist eine Tür mit einem Nummern pad")
+                _h("Ein fenster in der Tür zeigt eine treppe die nach unter führt")
+                _h("")
+            else:
+                _h("Der Schrank ist bereits aus dem Weg")
+                _h("")
         else:
-            _h("Der durchgang ist Barrikadiert, du siehst wie Tische und Stühle auf der anderen seite die Tür blockieren")
+            _h("Hier ist kein schrank zum Schieben")
             _h("")
         return True
 
-    if _game.game_score >= 250 :
+    if _game.game_score >= 250:
         _game.krankenhaus_flur_access = True
         _game.unlock_transition('krankenhaus_flur')
-        _h("Aus der Ferne hörst du einen lauten knall")
-        _h("Es hört sich an als käme es aus den Krankenhaus")
-        _h("Villeicht solltest du nachsehen")
+        _h("Aus der Ferne hörst du einen lauten Knall")
+        _h("Es hört sich an, als käme es aus dem Krankenhaus")
+        _h("Vielleicht solltest du nachsehen")
         _h("")
-        return True
 
-    return False
+    if cmd in ('Benutze Nummern Pad', 'Nummer Pad benutzen', 'Verwende Nummern Pad'):
+        if _game.current_room == 'krankenhaus_geheim_treppe' and _game.krankenhaus_Schrank_geschoben:
+            if not _game.numpad_nutzen:
+                _game.numpad_nutzen = True
+                _h("")
+                codetry = int(input("Gib einen 6-stelligen Code ein... "))
+                if codetry == 123456:
+                    _h("Die Tür öffnet sich.")
+                elif codetry == 0:
+                    _game.numpad_nutzen = False
+                else:
+                    _h("Falscher Code.")
+        else:
+            _h("Hier ist kein Nummern-Pad.")
+            _h("")
+        return True
 
 # ========================
 # CONTAINER COMMANDS

@@ -201,7 +201,7 @@ last_backspace_time = 0
 #Biblio
 bibliothek_4_schrank_geschoben = False
 #Haus1 Tür
-haus1_tür_auf = False
+haus1_tür_auf = True
 #Haus1 Dachbodentür
 haus1_dachbodentür_auf = False
 #Haus1 boxes
@@ -209,10 +209,11 @@ haus1_dachboden_box_geschoben = False
 #Haus1 Nachttisch
 nachtschrank_auf = False
 #Safe
-safe_auf_haus1 = False
+safe_auf_haus1 = True
 safe_durchsucht_haus1 = False
 #krankenhaus
-krankenhaus_flur_access = False
+krankenhaus_schrank_geschoben = False
+numpad_nutzen = False
 
 # Key-Repeat für Cursor-Tasten
 delete_held = False
@@ -736,19 +737,18 @@ rooms = {
         'exits': {'osten': 'krankenhaus_straße', 'Westen': 'krankenhaus_wartebereich'},
         'items': [],
         'in_development': False
-
     },
     'krankenhaus_wartebereich': {#Krankenhaus
         'name': 'Krankenhaus - Wartebereich',
         'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
-        'exits': {'osten': 'krankenhaus_eingang','Westen': 'krankenhaus_flur'},
+        'exits': {'osten': 'krankenhaus_eingang', 'Westen': 'krankenhaus_flur'},
         'items': [],
         'in_development': False
     },
     'krankenhaus_flur': {#Krankenhaus
         'name': 'Krankenhaus - Flur',
         'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
-        'exits': {'osten': 'krankenhaus_wartebereich'},
+        'exits': {'osten': 'krankenhaus_wartebereich','Süden':'krankenhaus_Rezeption' },
         'items': [],
         'in_development': False
     },
@@ -1590,7 +1590,7 @@ BUILDING_HIERARCHY = {
     'krankenhaus': {
         'name': 'Krankenhaus',
         'floors': {
-            'main': ['krankenhaus_straße', 'krankenhaus_eingang'],
+            'main': ['krankenhaus_straße', 'krankenhaus_eingang','krankenhaus_wartebereich'],
         },
     },
     'bibliothek': {
@@ -1697,6 +1697,8 @@ TRANSITIONS = [
     {'id': 'west_kh', 'type': 'passage', 'from': 'westliche_haus_gabelung', 'to': 'krankenhaus_straße',
      'dir_from': 'süden', 'dir_to': 'norden'},
     {'id': 'kh_str_eing', 'type': 'entrance', 'from': 'krankenhaus_straße', 'to': 'krankenhaus_eingang',
+     'dir_from': 'westen', 'dir_to': 'osten'},
+    {'id': 'kh_str_wart', 'type': 'entrance', 'from': 'krankenhaus_eingang', 'to': 'krankenhaus_wartebereich',
      'dir_from': 'westen', 'dir_to': 'osten'},
     {'id': 'nw_no', 'type': 'passage', 'from': 'nord_westliche_weggabelung', 'to': 'nord_östliche_weggabelung',
      'dir_from': 'osten', 'dir_to': 'westen'},
@@ -1893,7 +1895,13 @@ def reset_transitions():
             t['locked'] = True
         elif t['id'] == 'bib_3_4':
             t['locked'] = True
-        elif t['id'] == 'haus1_tuer':
+        elif t['id'] == 'haus1_dachbodentür':
+            t['locked'] = True
+        elif t['id'] == 'krankenhaus_geheim_treppe':
+            t['locked'] = True
+        elif t['id'] == '':
+            t['locked'] = True    
+        elif t['id'] == 'haus1_tür':
             t['locked'] = True
         else:
             t['locked'] = False
