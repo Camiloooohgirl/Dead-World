@@ -1644,23 +1644,78 @@ for _bk, _bd in BUILDING_HIERARCHY.items():
 # ===== TRANSITIONS (abgeleitet aus exits) =====
 # Für Bewegung gilt nur noch rooms[room]['exits'].
 # Diese Liste existiert nur für die Karten-/Edge-Anzeige.
+def _normalize_direction(value):
+    if not isinstance(value, str):
+        return ""
+    return value.strip().lower()
+
+def _resolve_room_key(value):
+    """Resolve target room keys tolerant against small naming mismatches."""
+    if not isinstance(value, str):
+        return None
+    candidate = value.strip()
+    if not candidate:
+        return None
+    if candidate in rooms:
+        return candidate
+    lowered = candidate.lower()
+    for rk in rooms:
+        if rk.lower() == lowered:
+            return rk
+    normalized = candidate.replace("-", "_")
+    if normalized in rooms:
+        return normalized
+    normalized_lower = normalized.lower()
+    for rk in rooms:
+        if rk.lower() == normalized_lower:
+            return rk
+    return None
+
+def sanitize_room_exits():
+    """Normalisiert exits: Richtungen klein, Zielräume auf gültige Keys auflösen."""
+    fixed = 0
+    removed = 0
+    for _room_key, _room_data in rooms.items():
+        _raw_exits = _room_data.get('exits', {})
+        if not isinstance(_raw_exits, dict):
+            _room_data['exits'] = {}
+            removed += 1
+            continue
+
+        _new_exits = {}
+        for _dir, _target in _raw_exits.items():
+            _norm_dir = _normalize_direction(_dir)
+            _resolved_target = _resolve_room_key(_target)
+            if not _norm_dir or not _resolved_target:
+                removed += 1
+                continue
+            _new_exits[_norm_dir] = _resolved_target
+            if _norm_dir != _dir or _resolved_target != _target:
+                fixed += 1
+
+        _room_data['exits'] = _new_exits
+
+    if fixed or removed:
+        print(f"[MAP] Exits bereinigt: {fixed} korrigiert, {removed} entfernt")
+
 def rebuild_transitions_from_exits():
     transitions = []
     for _from_room, _room_data in rooms.items():
         for _dir_from, _to_room in _room_data.get('exits', {}).items():
-            if not _to_room or _to_room not in rooms:
+            _resolved_to = _resolve_room_key(_to_room)
+            if not _resolved_to:
                 continue
             _dir_to = None
-            for _rev_dir, _rev_dest in rooms[_to_room].get('exits', {}).items():
-                if _rev_dest == _from_room:
-                    _dir_to = _rev_dir
+            for _rev_dir, _rev_dest in rooms[_resolved_to].get('exits', {}).items():
+                if _resolve_room_key(_rev_dest) == _from_room:
+                    _dir_to = _normalize_direction(_rev_dir)
                     break
             transitions.append({
-                'id': f'edge_{_from_room}_{_dir_from}',
+                'id': f'edge_{_from_room}_{_normalize_direction(_dir_from)}',
                 'type': 'passage',
                 'from': _from_room,
-                'to': _to_room,
-                'dir_from': _dir_from,
+                'to': _resolved_to,
+                'dir_from': _normalize_direction(_dir_from),
                 'dir_to': _dir_to,
                 'locked': False,
                 'trigger': None,
@@ -1668,6 +1723,7 @@ def rebuild_transitions_from_exits():
             })
     return transitions
 
+sanitize_room_exits()
 TRANSITIONS = rebuild_transitions_from_exits()
 
 def get_room_context(room_key):
@@ -1683,16 +1739,19 @@ def get_transitions_from(room_key):
     result = []
     room = rooms.get(room_key, {})
     for d, target in room.get('exits', {}).items():
-        if target in rooms:
-            result.append((d, target, {'locked': False}))
+        resolved_target = _resolve_room_key(target)
+        if resolved_target:
+            result.append((_normalize_direction(d), resolved_target, {'locked': False}))
     return result
 
 def try_transition(room_key, direction):
     """Attempt to move from room_key in direction. Returns (success, target, transition, message)."""
+    wanted = _normalize_direction(direction)
     room = rooms.get(room_key, {})
     for d, target in room.get('exits', {}).items():
-        if d == direction and target in rooms:
-            return (True, target, {'locked': False, 'trigger': None}, None)
+        resolved_target = _resolve_room_key(target)
+        if _normalize_direction(d) == wanted and resolved_target:
+            return (True, resolved_target, {'locked': False, 'trigger': None}, None)
     return (False, None, None, 'Du kannst nicht in diese Richtung gehen.')
 
 def unlock_transition(transition_id):
