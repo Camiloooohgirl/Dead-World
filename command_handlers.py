@@ -678,8 +678,8 @@ def handle_interaction_commands(cmd):
 
     if cmd in ('Schiebe schrank zur seite','Schrank schieben','Schiebe Schrank','Bewege Schrank'):
         if _game.current_room == 'krankenhaus_labor' :
-            if not _game.krankenhaus_Schrank_geschoben:
-                _game.krankenhaus_Schrank_geschoben = True
+            if not _game.krankenhaus_schrank_geschoben:
+                _game.krankenhaus_schrank_geschoben = True
                 _game.unlock_transition('krankenhaus_geheim_treppe')
                 _h("Du schiebst den Schrank zur Seite")
                 _h("Da hinter ist eine Tür mit einem Nummern pad")
@@ -711,7 +711,7 @@ def handle_interaction_commands(cmd):
         'benutze numpad',
         'numpad benutzen',
     ):
-        if _game.current_room == 'krankenhaus_geheim_treppe' and _game.krankenhaus_Schrank_geschoben:
+        if _game.current_room == 'krankenhaus_geheim_treppe' and _game.krankenhaus_schrank_geschoben:
             if not _game.numpad_nutzen:
                 _game.numpad_nutzen = True
                 _h("")
