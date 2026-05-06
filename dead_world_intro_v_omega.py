@@ -121,6 +121,10 @@ font_tiny = pygame.font.Font(None, 25)
 # Game States (Definitionen in config.py)
 current_state = INTRO
 
+# Pause-Menü
+pause_selected_index = 0
+_options_return_state = MENU  # Wohin nach Verlassen der Optionen zurückgekehrt wird
+
 # Map-System Globals (Graph View)
 map_camera_x = 0
 map_camera_y = 0
@@ -2133,13 +2137,36 @@ def load_game_from_menu():
     describe_room()
 
 def show_options():
-    global current_state
+    global current_state, _options_return_state
+    _options_return_state = MENU
     current_state = OPTIONS
 
 def back_to_menu():
     global current_state
+    current_state = _options_return_state
+    if current_state == MENU:
+        _start_menu_music()
+
+def resume_game():
+    """Setzt das pausierte Spiel fort."""
+    global current_state
+    current_state = GAME
+
+def pause_show_options():
+    """Öffnet die Optionen aus dem Pause-Menü heraus."""
+    global current_state, _options_return_state
+    _options_return_state = PAUSED
+    current_state = OPTIONS
+
+def pause_to_main_menu():
+    """Verlässt das laufende Spiel und kehrt zum Hauptmenü zurück."""
+    global current_state
     current_state = MENU
     _start_menu_music()
+
+def pause_save_game():
+    """Speichert den Spielstand aus dem Pause-Menü heraus."""
+    save_game()
 
 def _start_menu_music():
     """Startet die Menü-Musik falls nicht bereits aktiv"""
@@ -2525,7 +2552,6 @@ def get_node_at_screen_pos(mx, my, unit, cx, cy):
 def get_transition_at_screen_pos(mx, my, unit, cx, cy):
     """Return (from_room, to_room) if a transition line is clicked, or None.
        Uses point-to-line segment distance."""
-    import math
     hit_dist = max(5, int(10 * map_zoom))
     
     for t in TRANSITIONS:
@@ -2677,7 +2703,6 @@ def draw_map(current_time):
         
         if t_type == 'stairs':
             # Draw dashed line for stairs
-            import math
             dx = p2[0] - p1[0]
             dy = p2[1] - p1[1]
             dist = math.hypot(dx, dy)
@@ -4129,6 +4154,72 @@ options_buttons = [
     MenuButton("ZURÜCK", (WIDTH // 2, 550), back_to_menu)
 ]
 
+# Pause-Menü Buttons (Positionen werden in draw_pause_menu dynamisch aktualisiert)
+pause_buttons = [
+    MenuButton("FORTSETZEN", (WIDTH // 2, 310), resume_game),
+    MenuButton("SPIEL SPEICHERN", (WIDTH // 2, 390), pause_save_game),
+    MenuButton("OPTIONEN", (WIDTH // 2, 470), pause_show_options),
+    MenuButton("HAUPTMENÜ", (WIDTH // 2, 550), pause_to_main_menu),
+    MenuButton("BEENDEN", (WIDTH // 2, 630), quit_game),
+]
+
+
+def draw_pause_menu(current_time):
+    """Zeichnet das Pause-Menü mit verdunkeltem Spiel-Hintergrund."""
+    global pause_selected_index
+
+    # Spiel als eingefrorenen Hintergrund rendern
+    draw_game(current_time)
+
+    # Verdunkelndes Overlay
+    overlay = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
+    overlay.fill((0, 0, 0, 180))
+    screen.blit(overlay, (0, 0))
+
+    # Titel
+    font_title = get_scaled_font(80)
+    title_surf = font_title.render("PAUSIERT", True, BLOOD_RED)
+    title_rect = title_surf.get_rect(center=(screen.get_width() // 2, scale_y(150)))
+    screen.blit(title_surf, title_rect)
+
+    # Trennlinie
+    center_x = screen.get_width() // 2
+    line_half = scale(120)
+    line_y = scale_y(220)
+    _draw_gradient_line(screen, center_x, line_y, line_half, DARK_RED)
+
+    # Button-Positionen für aktuelle Auflösung neu setzen
+    pause_buttons[0].pos = (center_x, scale_y(310))
+    pause_buttons[1].pos = (center_x, scale_y(390))
+    pause_buttons[2].pos = (center_x, scale_y(470))
+    pause_buttons[3].pos = (center_x, scale_y(550))
+    pause_buttons[4].pos = (center_x, scale_y(630))
+
+    mouse_pos = pygame.mouse.get_pos()
+    mouse_over_any = False
+    for i, button in enumerate(pause_buttons):
+        if button.check_hover(mouse_pos):
+            pause_selected_index = i
+            mouse_over_any = True
+
+    if not mouse_over_any:
+        for i, button in enumerate(pause_buttons):
+            button.hovered = (i == pause_selected_index)
+
+    for button in pause_buttons:
+        button.draw(screen, current_time)
+
+    # Hinweis-Zeile
+    font_hint = get_scaled_font(22)
+    hint_pulse = int(60 + 30 * math.sin(current_time * 0.002))
+    hint_surf = font_hint.render(
+        "ESC: Fortsetzen   |   ↑↓: Navigieren   |   ENTER: Auswählen",
+        True, (hint_pulse, hint_pulse, hint_pulse)
+    )
+    hint_rect = hint_surf.get_rect(center=(screen.get_width() // 2, screen.get_height() - scale(30)))
+    screen.blit(hint_surf, hint_rect)
+
+
 def main():
     global current_state, input_text, scroll_offset, max_scroll, menu_selected_index, cursor_position
     global map_camera_x, map_camera_y, map_zoom, map_cursor_room, map_dragging, map_drag_last_pos
@@ -4171,14 +4262,16 @@ def main():
                     if current_state == MENU:
                         running = False
                     elif current_state == OPTIONS:
-                        current_state = MENU
-                        _start_menu_music()
+                        current_state = _options_return_state
+                        if current_state == MENU:
+                            _start_menu_music()
                     elif current_state == MAP:
                         current_state = GAME
                         map_dragging = False
                     elif current_state == GAME:
-                        current_state = MENU
-                        _start_menu_music()
+                        current_state = PAUSED
+                    elif current_state == PAUSED:
+                        current_state = GAME
                     else:
                         current_state = MENU
                         _start_menu_music()
@@ -4195,6 +4288,8 @@ def main():
                     event_handlers.handle_keydown_menu(event)
                 elif current_state == OPTIONS:
                     event_handlers.handle_keydown_options(event)
+                elif current_state == PAUSED:
+                    event_handlers.handle_keydown_pause(event)
                 elif current_state == GAME:
                     event_handlers.handle_keydown_game(event)
             
@@ -4210,6 +4305,9 @@ def main():
                             button.click()
                     elif current_state == OPTIONS:
                         for button in options_buttons:
+                            button.click()
+                    elif current_state == PAUSED:
+                        for button in pause_buttons:
                             button.click()
             
             elif event.type == pygame.MOUSEBUTTONUP:
@@ -4242,6 +4340,8 @@ def main():
             draw_game(current_time)
         elif current_state == MAP:
             draw_map(current_time)
+        elif current_state == PAUSED:
+            draw_pause_menu(current_time)
         
         pygame.display.flip()
         clock.tick(FPS)

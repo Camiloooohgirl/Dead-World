@@ -34,6 +34,7 @@ MENU = 1
 OPTIONS = 2
 GAME = 3
 MAP = 4
+PAUSED = 5
 
 # ========================
 # COLORS — Atmospheric Post-Apocalyptic Palette

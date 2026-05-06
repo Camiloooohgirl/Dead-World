@@ -193,6 +193,19 @@ def handle_keydown_menu(event):
 
 
 # ========================
+# KEYDOWN — PAUSE STATE
+# ========================
+def handle_keydown_pause(event):
+    """Keydown events while in PAUSED state."""
+    if event.key == pygame.K_UP:
+        _game.pause_selected_index = (_game.pause_selected_index - 1) % len(_game.pause_buttons)
+    elif event.key == pygame.K_DOWN:
+        _game.pause_selected_index = (_game.pause_selected_index + 1) % len(_game.pause_buttons)
+    elif event.key == pygame.K_RETURN:
+        _game.pause_buttons[_game.pause_selected_index].action()
+
+
+# ========================
 # KEYDOWN — OPTIONS STATE
 # ========================
 def handle_keydown_options(event):
