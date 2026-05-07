@@ -631,13 +631,17 @@ def handle_interaction_commands(cmd):
     # BIBLIOTHEK: Bücherregal schieben
     # ------------------------------------------------------------
     if _has_any(cmd, 'schieb', 'beweg') and _has_any(cmd, 'regal', 'bücherreg'):
-        if _game.current_room == 'bibliothek_3':
+        if _game.current_room in ('bibliothek_3', 'bibliothek_4'):
             if not _game.bibliothek_4_schrank_geschoben:
                 _game.bibliothek_4_schrank_geschoben = True
-                _game.unlock_transition('bib_3_4')
+                # Wichtig: nicht nur das Flag setzen — der Pfad muss auch
+                # tatsächlich geöffnet werden. unlock_transition() ist seit
+                # dem Refactor ein No-Op; der echte Schalter sind die Exits
+                # der Räume bibliothek_3/4 plus ein Rebuild von TRANSITIONS.
+                _game.apply_bibliothek_bookshelf_state()
                 _h("Du stemmst dich gegen das schwere Bücherregal...")
                 _h("Mit aller Kraft schiebst du es zur Seite!")
-                _h("Der Weg nach NORDEN ist jetzt frei.")
+                _h("Der Weg zwischen den beiden Bibliotheksbereichen ist jetzt frei.")
                 _h("")
             else:
                 _h("Das Bücherregal wurde bereits zur Seite geschoben.")
@@ -679,7 +683,7 @@ def handle_interaction_commands(cmd):
     # "schieben" ohne Objekt -> erkenne anhand des Raums
     # ------------------------------------------------------------
     if cmd in ('schieb', 'schieben'):
-        if _game.current_room == 'bibliothek_3':
+        if _game.current_room in ('bibliothek_3', 'bibliothek_4'):
             return handle_interaction_commands('schiebe regal')
         if str(_game.current_room).startswith('krankenhaus_labor'):
             return handle_interaction_commands('schiebe schrank')

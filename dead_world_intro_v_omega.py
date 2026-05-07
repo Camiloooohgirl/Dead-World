@@ -1018,15 +1018,15 @@ rooms = {
     },
     'bibliothek_3': {#Bibliothek
         'name': 'Bibliothek',
-        'description': '',
-        'exits': {'süden': 'bibliothek_2', 'norden': 'bibliothek_4'},
+        'description': 'Ein staubiger Lesebereich. Im NORDEN versperrt ein schweres BÜCHERREGAL den Durchgang. Wenn du dich dagegenstemmst, könntest du es vielleicht zur Seite SCHIEBEN.',
+        'exits': {'süden': 'bibliothek_2'},
         'items': [],
         'in_development': False
     },
     'bibliothek_4': {#Bibliothek
         'name': 'Bibliothek',
-        'description': '',
-        'exits': {'westen': 'bibliothek_5', 'süden': 'bibliothek_3'},
+        'description': 'Hinter dem verschobenen Bücherregal öffnet sich ein weiterer Bereich der Bibliothek. Eine alte KISTE steht in der Ecke.',
+        'exits': {'westen': 'bibliothek_5'},
         'items': ['kiste'],
         'in_development': False
     },
@@ -1619,6 +1619,37 @@ def reset_transitions():
     TRANSITIONS = rebuild_transitions_from_exits()
 
 
+def apply_bibliothek_bookshelf_state():
+    """Synchronisiert die Exits zwischen bibliothek_3 <-> bibliothek_4 mit
+    dem Flag `bibliothek_4_schrank_geschoben`.
+
+    Solange das Bücherregal nicht geschoben ist, fehlen die Norden/Süden-
+    Übergänge. Nach dem Schieben werden sie hinzugefügt und die Karte
+    (TRANSITIONS) neu aufgebaut.
+    """
+    global TRANSITIONS
+    b3 = rooms.get('bibliothek_3')
+    b4 = rooms.get('bibliothek_4')
+    if not b3 or not b4:
+        return
+    if bibliothek_4_schrank_geschoben:
+        b3.setdefault('exits', {})['norden'] = 'bibliothek_4'
+        b4.setdefault('exits', {})['süden'] = 'bibliothek_3'
+        b3['description'] = (
+            'Ein staubiger Lesebereich. Das schwere Bücherregal steht jetzt '
+            'zur Seite geschoben — der Weg nach NORDEN ist frei.'
+        )
+    else:
+        b3.get('exits', {}).pop('norden', None)
+        b4.get('exits', {}).pop('süden', None)
+        b3['description'] = (
+            'Ein staubiger Lesebereich. Im NORDEN versperrt ein schweres '
+            'BÜCHERREGAL den Durchgang. Wenn du dich dagegenstemmst, '
+            'könntest du es vielleicht zur Seite SCHIEBEN.'
+        )
+    TRANSITIONS[:] = rebuild_transitions_from_exits()
+
+
 def toggle_fullscreen():
     global screen, fullscreen
     fullscreen = not fullscreen
@@ -1880,6 +1911,7 @@ class MenuButton:
 def start_game():
     global current_state, game_history, current_room, player_inventory, prolog_shown, prolog_lines, prolog_line_index, menu_music_playing, visited_rooms, zombie_kill_times
     global game_score, game_moves, view_mode, visited_rooms_desc, game_start_ticks, pending_ambiguity
+    global bibliothek_4_schrank_geschoben
     current_state = GAME
     game_history = []
     current_room = 'start'
@@ -1912,7 +1944,12 @@ def start_game():
         # Reset light charges
         if idef.max_charge >= 0:
             idef.charge = idef.max_charge
-    
+
+    # Puzzle-Flags für neuen Spielstart zurücksetzen, damit z.B. das
+    # Bücherregal in der Bibliothek den Durchgang wieder blockiert.
+    bibliothek_4_schrank_geschoben = False
+    apply_bibliothek_bookshelf_state()
+
     # Menü-Musik ausblenden
     pygame.mixer.music.fadeout(800)
     menu_music_playing = False
@@ -1984,6 +2021,8 @@ def load_game_from_menu():
     safe_durchsucht_haus1 = data.get('safe_durchsucht_haus1', False)
     krankenhaus_schrank_geschoben = data.get('krankenhaus_schrank_geschoben', False)
     numpad_nutzen = data.get('numpad_nutzen', False)
+    # Bibliotheks-Bücherregal-Übergang anhand des geladenen Flags rekonstruieren.
+    apply_bibliothek_bookshelf_state()
     for ik, charge_val in data.get('item_charges', {}).items():
         if ik in ITEM_DEFS:
             ITEM_DEFS[ik].charge = charge_val
@@ -2484,6 +2523,8 @@ def restore_game():
     safe_durchsucht_haus1 = data.get('safe_durchsucht_haus1', False)
     krankenhaus_schrank_geschoben = data.get('krankenhaus_schrank_geschoben', False)
     numpad_nutzen = data.get('numpad_nutzen', False)
+    # Bibliotheks-Bücherregal-Übergang anhand des geladenen Flags rekonstruieren.
+    apply_bibliothek_bookshelf_state()
     for ik, charge_val in data.get('item_charges', {}).items():
         if ik in ITEM_DEFS:
             ITEM_DEFS[ik].charge = charge_val
