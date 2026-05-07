@@ -5,7 +5,6 @@ import random
 import time
 import datetime
 import os
-from game_map import rebuild_game_map, GAME_MAP, get_room_coord, BIOME_COLORS, BIOME_ICONS, compute_auto_layout, DISTRICT_GRID, DISTRICT_OF
 from config import *
 from render_utils import *
 import render_utils
@@ -124,50 +123,6 @@ current_state = INTRO
 # Pause-Menü
 pause_selected_index = 0
 _options_return_state = MENU  # Wohin nach Verlassen der Optionen zurückgekehrt wird
-
-# Map-System Globals (Graph View)
-map_camera_x = 0
-map_camera_y = 0
-map_zoom = 1.0
-map_target_x = 0
-map_target_y = 0
-map_cursor_room = None
-map_dragging = False
-map_drag_last_pos = (0, 0)
-map_coords_dirty = True
-
-# Node-Dragging (Customizable Map)
-node_dragging = False          # True wenn ein Node gerade gezogen wird
-node_drag_key = None           # room_key des gezogenen Nodes
-node_hovered_key = None        # room_key des Nodes unter der Maus
-# MAP_LAYOUT_FILE importiert aus config.py
-
-# Building-Dragging (Block dragging)
-building_dragging = False      # True wenn ein ganzes Gebäude gezogen wird
-building_drag_key = None       # building_key des gezogenen Gebäudes
-building_drag_start = (0, 0)   # Graph-Koordinaten beim Start des Drags
-building_drag_offsets = {}     # Relative Offsets der Nodes zum Drag-Startpunkt
-
-# Custom Blocks (User-created annotation boxes)
-custom_blocks = []             # List of {name, gx, gy, gw, gh, color}
-selected_block_idx = None      # Index of selected custom block
-block_resizing = False         # True wenn Block gerade resized wird
-block_resize_handle = None     # 'tl','tr','bl','br','t','b','l','r'
-block_moving = False           # True wenn Block gerade verschoben wird
-block_move_offset = (0, 0)     # Offset beim Drag-Start
-block_naming = False           # True wenn gerade ein Block-Name eingegeben wird
-block_name_input = ""          # Aktueller Name-Input
-
-# Node Editing (MapEditor integration in MAP view)
-selected_node_key = None       # room_key of selected node (for rename/delete)
-node_naming = False            # True wenn gerade ein Node-Name eingegeben wird
-node_name_input = ""           # Aktueller Name-Input für Node-Umbenennung
-# Context Menu
-context_menu_open = False      # True wenn ein Kontextmenü offen ist
-context_menu_pos = (0, 0)      # Bildschirm-Position des Menüs
-context_menu_node = None       # room_key für den das Menü geöffnet wurde
-context_menu_edge = None       # (from_room, to_room) tuple if an edge was clicked
-context_menu_items = []        # List of (label, action_key) tuples
 
 visited_rooms = set()  # Besuchte Räume (zB. für Resets/Stats)
 
@@ -1440,9 +1395,6 @@ rooms = {
 
 }
 
-# Build the spatial GAME_MAP from the rooms dictionary
-rebuild_game_map(rooms)
-
 # ========================
 # HIERARCHICAL CONTAINER SYSTEM
 # ========================
@@ -1923,7 +1875,7 @@ class MenuButton:
             self.action()
 
 def start_game():
-    global current_state, game_history, current_room, player_inventory, prolog_shown, prolog_lines, prolog_line_index, menu_music_playing, visited_rooms, map_coords_dirty, zombie_kill_times
+    global current_state, game_history, current_room, player_inventory, prolog_shown, prolog_lines, prolog_line_index, menu_music_playing, visited_rooms, zombie_kill_times
     global game_score, game_moves, view_mode, visited_rooms_desc, game_start_ticks, pending_ambiguity
     current_state = GAME
     game_history = []
@@ -1933,7 +1885,6 @@ def start_game():
     prolog_line_index = 0
     visited_rooms = {'start'}  # Start-Raum als besucht markieren
     visited_rooms_desc = set()
-    map_coords_dirty = True
     zombie_kill_times = {}  # Respawn-Cooldowns zurücksetzen
     game_score = 0
     game_moves = 0
@@ -2394,379 +2345,6 @@ def describe_room():
     add_to_history("")
 
 
-# ========================
-# GRAPHISCHES KARTEN-SYSTEM (Node Graph)
-# ========================
-
-# Base layout: snap each district anchor onto its DISTRICT_GRID position
-# (col*S, row*S), and BFS-spiral all sub-rooms around their nearest anchor.
-# This gives a clean, grid-aligned in-game map that matches the Idea-Map.
-GRAPH_LAYOUT = compute_auto_layout(rooms)
-print(f"[MAP] Auto-layout: {len(GRAPH_LAYOUT)} rooms placed on Idea-Map grid")
-
-# Load custom positions from JSON. These OVERRIDE the auto-layout for rooms
-# the user has manually moved in the in-game map editor.
-import json as _json
-try:
-    with open(MAP_LAYOUT_FILE, 'r', encoding='utf-8') as _f:
-        _custom = _json.load(_f)
-    # Support both old format (flat dict) and new format (nested)
-    _node_overrides = _custom.get('nodes', _custom)
-    _override_count = 0
-    for _rk, _pos in _node_overrides.items():
-        if _rk in GRAPH_LAYOUT:
-            GRAPH_LAYOUT[_rk] = tuple(_pos)
-            _override_count += 1
-    custom_blocks = _custom.get('custom_blocks', []) if isinstance(_custom, dict) and 'nodes' in _custom else []
-    print(f"[MAP] {_override_count} nodes overridden from {MAP_LAYOUT_FILE}")
-except FileNotFoundError:
-    pass
-except Exception as _e:
-    print(f"[MAP] Could not load custom layout: {_e}")
-
-def save_map_layout():
-    """Save current GRAPH_LAYOUT and custom_blocks to JSON file."""
-    import json
-    data = {
-        'nodes': {rk: list(pos) for rk, pos in GRAPH_LAYOUT.items()},
-        'custom_blocks': custom_blocks
-    }
-    with open(MAP_LAYOUT_FILE, 'w', encoding='utf-8') as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-    return MAP_LAYOUT_FILE
-
-def get_node_at_screen_pos(mx, my, unit, cx, cy):
-    """Return room_key of node at screen position (mx, my), or None."""
-    hit_radius = max(8, int(20 * map_zoom))
-    for rk, (rx, ry) in GRAPH_LAYOUT.items():
-        nx = int(cx + rx * unit)
-        ny = int(cy + ry * unit)
-        if (mx - nx) ** 2 + (my - ny) ** 2 <= hit_radius ** 2:
-            return rk
-    return None
-
-def get_transition_at_screen_pos(mx, my, unit, cx, cy):
-    """Return (from_room, to_room) if a transition line is clicked, or None.
-       Uses point-to-line segment distance."""
-    hit_dist = max(5, int(10 * map_zoom))
-    
-    for t in TRANSITIONS:
-        r_from = t.get('from')
-        r_to = t.get('to')
-        if not r_from or not r_to:
-            continue
-            
-        p1x, p1y = GRAPH_LAYOUT.get(r_from, (0, 0))
-        p2x, p2y = GRAPH_LAYOUT.get(r_to, (0, 0))
-        
-        nx1 = cx + p1x * unit
-        ny1 = cy + p1y * unit
-        nx2 = cx + p2x * unit
-        ny2 = cy + p2y * unit
-        
-        # Point to line segment distance
-        line_len_sq = (nx2 - nx1)**2 + (ny2 - ny1)**2
-        if line_len_sq == 0:
-            continue
-            
-        # Projection of point onto line (parameter t from 0 to 1)
-        t_param = max(0, min(1, ((mx - nx1) * (nx2 - nx1) + (my - ny1) * (ny2 - ny1)) / line_len_sq))
-        
-        proj_x = nx1 + t_param * (nx2 - nx1)
-        proj_y = ny1 + t_param * (ny2 - ny1)
-        
-        dist_sq = (mx - proj_x)**2 + (my - proj_y)**2
-        if dist_sq <= hit_dist**2:
-            return (r_from, r_to)
-            
-    return None
-
-def screen_to_graph(sx, sy, unit, cx, cy):
-    """Convert screen pixel coords to GRAPH_LAYOUT coords."""
-    gx = (sx - cx) / unit
-    gy = (sy - cy) / unit
-    return (gx, gy)
-
-def get_building_at_screen_pos(mx, my, unit, cx, cy):
-    """Return building_key if (mx, my) is inside a building bounding box, or None."""
-    for b_key, b_data in BUILDING_HIERARCHY.items():
-        b_rooms = []
-        for f_key, f_rooms in b_data.get('floors', {}).items():
-            b_rooms.extend(f_rooms)
-        if not b_rooms:
-            continue
-        coords = [GRAPH_LAYOUT.get(r, (0,0)) for r in b_rooms]
-        min_x = min(c[0] for c in coords)
-        max_x = max(c[0] for c in coords)
-        min_y = min(c[1] for c in coords)
-        max_y = max(c[1] for c in coords)
-        pad = 1.2
-        bx1 = cx + (min_x - pad) * unit
-        by1 = cy + (min_y - pad) * unit
-        bx2 = cx + (max_x + pad) * unit
-        by2 = cy + (max_y + pad) * unit
-        if bx1 <= mx <= bx2 and by1 <= my <= by2:
-            return b_key
-    return None
-
-def get_block_at_screen_pos(mx, my, unit, cx, cy):
-    """Return (block_index, handle_or_None) for custom block at screen pos.
-    handle is one of 'tl','tr','bl','br' for resize corners, or 'move' for body/border."""
-    handle_size = max(6, int(10 * map_zoom))
-    for i, blk in enumerate(custom_blocks):
-        bx1 = int(cx + blk['gx'] * unit)
-        by1 = int(cy + blk['gy'] * unit)
-        bx2 = int(cx + (blk['gx'] + blk['gw']) * unit)
-        by2 = int(cy + (blk['gy'] + blk['gh']) * unit)
-        # Check resize corners first
-        corners = {
-            'tl': (bx1, by1), 'tr': (bx2, by1),
-            'bl': (bx1, by2), 'br': (bx2, by2)
-        }
-        for handle, (hx, hy) in corners.items():
-            if abs(mx - hx) <= handle_size and abs(my - hy) <= handle_size:
-                return (i, handle)
-        # Check entire body for moving
-        if bx1 <= mx <= bx2 and by1 <= my <= by2:
-            return (i, 'move')
-    return (None, None)
-
-def draw_map(current_time):
-    """Zeichnet den Hierarchischen Node Graph basierend auf Nested Containern"""
-    screen.fill((20, 20, 25))
-    
-    UNIT = scale(50) * map_zoom
-    center_x = screen.get_width() / 2 - (map_camera_x * map_zoom * 50)
-    center_y = screen.get_height() / 2 - (map_camera_y * map_zoom * 50)
-    
-    def get_pos(room_k):
-        rx, ry = GRAPH_LAYOUT.get(room_k, (0, 0))
-        return (int(center_x + rx * UNIT), int(center_y + ry * UNIT))
-        
-    # (Building hierarchy boxes removed - use custom blocks [N] for grouping)
-
-
-    # 1.5) Custom Blocks (User-created annotation boxes)
-    for i, blk in enumerate(custom_blocks):
-        bx1 = int(center_x + blk['gx'] * UNIT)
-        by1 = int(center_y + blk['gy'] * UNIT)
-        bx2 = int(center_x + (blk['gx'] + blk['gw']) * UNIT)
-        by2 = int(center_y + (blk['gy'] + blk['gh']) * UNIT)
-        bw, bh = bx2 - bx1, by2 - by1
-        
-        c = blk.get('color', [80, 60, 120])
-        fill = (max(0, c[0]-30), max(0, c[1]-30), max(0, c[2]-30))
-        border = tuple(c)
-        border_w = max(1, int(2*map_zoom))
-        
-        if i == selected_block_idx:
-            border = (255, 220, 80)
-            border_w = max(2, int(3*map_zoom))
-        
-        pygame.draw.rect(screen, fill, (bx1, by1, bw, bh))
-        pygame.draw.rect(screen, border, (bx1, by1, bw, bh), border_w)
-        
-        # Block name
-        name = blk.get('name', 'Block')
-        if block_naming and i == selected_block_idx:
-            name = block_name_input + '█'
-        name_surf = font_terminal.render(name.upper(), True, (200, 200, 200))
-        screen.blit(name_surf, (bx1 + 10, by1 + 10))
-        
-        # Resize handles on selected block
-        if i == selected_block_idx:
-            handle_size = max(4, int(6*map_zoom))
-            for hx, hy in [(bx1, by1), (bx2, by1), (bx1, by2), (bx2, by2)]:
-                pygame.draw.rect(screen, (255, 220, 80), 
-                    (hx - handle_size, hy - handle_size, handle_size*2, handle_size*2))
-
-    # 2) Transitions (Kanten/Edges)
-    # ─── Render-Tiers, damit lange/falsche Linien nicht alles zumüllen ───
-    #   short  (dist <= 30): solid blau, normaler Look
-    #   long   (dist >  30): gestrichelt + halbtransparent (deutet "weit weg" an)
-    #   mismatch (Richtung passt nicht zum Exit-Namen): orange-rot, gestrichelt
-    # Direction → (dx, dy) in GRAPH_LAYOUT-Einheiten (1 grid cell = 2 units, siehe oben)
-    _DIR_DELTA_RENDER = {
-        'norden':     ( 0, -1), 'süden':      ( 0,  1),
-        'osten':      ( 1,  0), 'westen':     (-1,  0),
-        'nordosten':  ( 1, -1), 'nordwesten': (-1, -1),
-        'südosten':   ( 1,  1), 'südwesten':  (-1,  1),
-        'hoch':       ( 0, -1), 'runter':     ( 0,  1),
-    }
-    LONG_THRESHOLD_PX = scale(60) * map_zoom  # >60 screen-px counts as "long"
-    
-    def _draw_dashed(surface, color, p1, p2, thickness, dash_len=8, gap_len=6):
-        dx_ = p2[0] - p1[0]; dy_ = p2[1] - p1[1]
-        d_ = math.hypot(dx_, dy_)
-        if d_ <= 0: return
-        ux, uy = dx_ / d_, dy_ / d_
-        step = (dash_len + gap_len) * map_zoom
-        cur = 0
-        while cur < d_:
-            seg_end = min(cur + dash_len * map_zoom, d_)
-            s = (int(p1[0] + ux * cur), int(p1[1] + uy * cur))
-            e = (int(p1[0] + ux * seg_end), int(p1[1] + uy * seg_end))
-            pygame.draw.line(surface, color, s, e, thickness)
-            cur += step
-    
-    for t in TRANSITIONS:
-        r_from = t.get('from')
-        r_to = t.get('to')
-        
-        if not r_from or not r_to: continue
-        # if r_from not in visited_rooms and r_to not in visited_rooms: continue
-        
-        p1 = get_pos(r_from)
-        p2 = get_pos(r_to)
-        
-        locked = t.get('locked', False)
-        t_type = t.get('type', 'passage')
-        
-        # ── Distanz + Richtungs-Check ──
-        dx_px = p2[0] - p1[0]
-        dy_px = p2[1] - p1[1]
-        dist_px = math.hypot(dx_px, dy_px)
-        is_long = dist_px > LONG_THRESHOLD_PX
-        
-        is_mismatch = False
-        dir_from = t.get('dir_from') or t.get('dir')
-        if dir_from in _DIR_DELTA_RENDER and dist_px > scale(20):
-            edx, edy = _DIR_DELTA_RENDER[dir_from]
-            enorm = math.hypot(edx, edy)
-            ex, ey = edx / enorm, edy / enorm
-            ax, ay = dx_px / dist_px, dy_px / dist_px
-            dot = ex * ax + ey * ay
-            if dot < 0.3:  # >70° vom erwarteten Vektor abweichend
-                is_mismatch = True
-        
-        thickness = max(1, int(3 * map_zoom)) if locked else max(1, int(2 * map_zoom))
-        
-        if t_type == 'stairs':
-            _draw_dashed(screen, (200, 200, 50), p1, p2, thickness, dash_len=10, gap_len=10)
-        elif locked:
-            pygame.draw.line(screen, (200, 50, 50), p1, p2, thickness)
-            mx, my = (p1[0] + p2[0]) // 2, (p1[1] + p2[1]) // 2
-            esize = 5 * map_zoom
-            pygame.draw.line(screen, (255, 50, 50), (mx-esize, my-esize), (mx+esize, my+esize), thickness)
-            pygame.draw.line(screen, (255, 50, 50), (mx+esize, my-esize), (mx-esize, my+esize), thickness)
-        elif is_mismatch:
-            # Falsche Richtung: orange-rot gestrichelt, dünner
-            _draw_dashed(screen, (210, 100, 70), p1, p2, max(1, thickness - 1), dash_len=6, gap_len=4)
-        elif is_long:
-            # Weite Verbindung: blass gestrichelt
-            _draw_dashed(screen, (60, 90, 115), p1, p2, max(1, thickness - 1), dash_len=10, gap_len=8)
-        else:
-            pygame.draw.line(screen, (100, 150, 200), p1, p2, thickness)
-
-    # 3) Nodes (Räume)
-    node_radius = max(4, int(15 * map_zoom))
-    
-    for r_key, (rx, ry) in GRAPH_LAYOUT.items():
-        # if r_key not in visited_rooms and r_key != current_room: continue
-        
-        pos = get_pos(r_key)
-        
-        # Raumfarbe entscheidet Besuchs-Status
-        fill_color = (60, 120, 80) if r_key in visited_rooms else (40, 40, 40)
-        border_color = (100, 200, 150) if r_key in visited_rooms else (80, 80, 80)
-        
-        # Highlight hovered/dragged node
-        if r_key == node_drag_key:
-            border_color = (255, 200, 50)
-            fill_color = (100, 80, 30)
-        elif r_key == selected_node_key:
-            border_color = (255, 255, 100)
-            fill_color = (80, 80, 40)
-        elif r_key == node_hovered_key:
-            border_color = (200, 200, 100)
-        
-        pygame.draw.circle(screen, fill_color, pos, node_radius)
-        pygame.draw.circle(screen, border_color, pos, node_radius, max(1, int(2*map_zoom)))
-        
-        # Highlight Player
-        if r_key == current_room:
-            # Pulsing ring
-            pulse = abs(math.sin(current_time * 0.005)) * 150 + 50
-            pygame.draw.circle(screen, (200, 255, 255), pos, int(node_radius * 1.5), max(1, int(2*map_zoom)))
-            # Player dot
-            pygame.draw.circle(screen, (255, 255, 255), pos, int(node_radius * 0.5))
-            
-        # Raumnamen anzeigen (nur wenn man nah herangezoomt hat, um Clutter zu vermeiden)
-        if map_zoom > 0.6 or r_key == current_room or r_key == selected_node_key:
-            if node_naming and r_key == selected_node_key:
-                lbl = node_name_input + '█'
-            else:
-                lbl = r_key.replace('_', ' ').title()
-                
-            # Wenn current room, zeige fett / groß
-            fnt = font_terminal if r_key == current_room else font_tiny
-            col = (255, 255, 255) if r_key == current_room else (180, 180, 180)
-            if r_key == selected_node_key:
-                col = (255, 255, 100)
-            
-            lbl_surf = fnt.render(lbl, True, col)
-            screen.blit(lbl_surf, (pos[0] - lbl_surf.get_width()//2, pos[1] + node_radius + 5))
-            
-    # UI Overlay Legend
-    title_text = "HIERARCHICAL CONTAINER SYSTEM MAP"
-    title_surf = font_terminal.render(title_text, True, (200, 255, 255))
-    screen.blit(title_surf, (30, 30))
-    pygame.draw.line(screen, (200, 255, 255), (30, 30 + title_surf.get_height() + 5), (30 + title_surf.get_width() + 50, 30 + title_surf.get_height() + 5), 2)
-    
-    # Legend Box
-    leg_x, leg_y = 30, screen.get_height() - 200
-    pygame.draw.rect(screen, (30, 30, 30, 200), (leg_x-10, leg_y-10, 280, 180))
-    pygame.draw.rect(screen, (100, 100, 100), (leg_x-10, leg_y-10, 280, 180), 1)
-    
-    screen.blit(font_tiny.render("LEGENDE:", True, (200, 200, 200)), (leg_x, leg_y))
-    
-    pygame.draw.line(screen, (100, 150, 200), (leg_x, leg_y+30), (leg_x+25, leg_y+30), 3)
-    screen.blit(font_tiny.render("Offen. Übergang", True, (150, 150, 150)), (leg_x+35, leg_y+20))
-    
-    pygame.draw.line(screen, (200, 50, 50), (leg_x, leg_y+55), (leg_x+25, leg_y+55), 3)
-    screen.blit(font_tiny.render("Gesperrter Übergang", True, (150, 150, 150)), (leg_x+35, leg_y+45))
-    
-    # Treppen strich-linie als legend
-    for _dx in (0, 10, 20):
-        pygame.draw.line(screen, (200, 200, 50), (leg_x+_dx, leg_y+80), (leg_x+_dx+5, leg_y+80), 2)
-    screen.blit(font_tiny.render("Treppen / Etage", True, (150, 150, 150)), (leg_x+35, leg_y+70))
-    
-    # Lange Verbindung (gestrichelt, blass)
-    for _dx in (0, 13, 26):
-        pygame.draw.line(screen, (60, 90, 115), (leg_x+_dx, leg_y+105), (leg_x+_dx+8, leg_y+105), 2)
-    screen.blit(font_tiny.render("Lange Verbindung (>60px)", True, (150, 150, 150)), (leg_x+35, leg_y+95))
-    
-    # Mismatch (gestrichelt, orange-rot)
-    for _dx in (0, 13, 26):
-        pygame.draw.line(screen, (210, 100, 70), (leg_x+_dx, leg_y+130), (leg_x+_dx+8, leg_y+130), 2)
-    screen.blit(font_tiny.render("Falsche Richtung (Exit ≠ Pos)", True, (150, 150, 150)), (leg_x+35, leg_y+120))
-    
-    # Controls Help Bottom Right
-    # Controls Help Bottom Right
-    help_surf = font_tiny.render("[M/ESC] Zurück  [Drag] Pan  [Rechtsklick] Node/Block ziehen  [S] Speichern  [N] Neuer Block  [F2] Umbenennen  [Entf] Löschen", True, (150, 180, 200))
-    screen.blit(help_surf, (screen.get_width() - help_surf.get_width() - 30, screen.get_height() - 40))
-    
-    # Show save indicator
-    if hasattr(draw_map, '_save_msg_time') and current_time - draw_map._save_msg_time < 2000:
-        save_surf = font_terminal.render("✔ Layout gespeichert!", True, (100, 255, 100))
-        screen.blit(save_surf, (screen.get_width()//2 - save_surf.get_width()//2, 80))
-
-    # Context Menu
-    if context_menu_open:
-        cm_x, cm_y = context_menu_pos
-        cm_w, cm_h = 180, len(context_menu_items) * 30
-        pygame.draw.rect(screen, (40, 40, 50), (cm_x, cm_y, cm_w, cm_h))
-        pygame.draw.rect(screen, (200, 200, 200), (cm_x, cm_y, cm_w, cm_h), 2)
-        for i, (label, action) in enumerate(context_menu_items):
-            # Highlight on hover
-            mx, my = pygame.mouse.get_pos()
-            item_rect = pygame.Rect(cm_x, cm_y + i * 30, cm_w, 30)
-            if item_rect.collidepoint(mx, my):
-                pygame.draw.rect(screen, (80, 80, 100), item_rect)
-            
-            lbl_surf = font_tiny.render(label, True, (255, 255, 255))
-            screen.blit(lbl_surf, (cm_x + 10, cm_y + i * 30 + 5))
-
 # === CLASSIC MECHANICS: Helper-Funktionen ===
 
 def add_score(action_key, amount=None, context=None):
@@ -3018,7 +2596,7 @@ def handle_look_in(container_key):
 
 def process_command(command):
     """Verarbeitet Spielerbefehle — dispatcht an command_handlers.py"""
-    global current_room, prolog_shown, prolog_line_index, qte_active, qte_input, command_history, history_index, current_state, map_camera_x, map_camera_y, map_zoom, map_coords_dirty, map_cursor_room
+    global current_room, prolog_shown, prolog_line_index, qte_active, qte_input, command_history, history_index, current_state
     global pending_ambiguity, game_moves, view_mode, game_score
     
     # Füge Command zur History hinzu (außer im QTE oder Prolog)
@@ -3102,7 +2680,6 @@ def process_command(command):
     if command_handlers.handle_combat_commands(cmd): return
     if command_handlers.handle_container_commands(cmd): return
     if command_handlers.handle_interaction_commands(cmd): return
-    if command_handlers.handle_map_editor(cmd): return
     if command_handlers.handle_system_commands(cmd): return
     command_handlers.handle_unknown_command(cmd, words)
 
@@ -4164,14 +3741,8 @@ def draw_pause_menu(current_time):
 
 def main():
     global current_state, input_text, scroll_offset, max_scroll, menu_selected_index, cursor_position
-    global map_camera_x, map_camera_y, map_zoom, map_cursor_room, map_dragging, map_drag_last_pos
     global options_selected_index
-    global node_dragging, node_drag_key, node_hovered_key
-    global building_dragging, building_drag_key
-    global selected_block_idx, block_resizing, block_resize_handle, block_moving, custom_blocks
-    global selected_node_key, node_naming, node_name_input
-    global context_menu_open, context_menu_pos, context_menu_node, context_menu_items
-    
+
     running = True
     start_time = pygame.time.get_ticks()
     
@@ -4186,13 +3757,11 @@ def main():
             if event.type == pygame.QUIT:
                 running = False
             
-            # Mausrad: Scrollen (GAME) / Zoom (MAP)
+            # Mausrad: Scrollen (GAME)
             elif event.type == pygame.MOUSEWHEEL:
                 if current_state == GAME and prolog_shown:
                     scroll_offset += event.y * 3
                     scroll_offset = max(0, min(scroll_offset, max_scroll))
-                elif current_state == MAP:
-                    map_zoom = max(0.3, min(3.0, map_zoom + event.y * 0.12))
             
             elif event.type == pygame.KEYDOWN:
                 # F11 Fullscreen (global)
@@ -4207,9 +3776,6 @@ def main():
                         current_state = _options_return_state
                         if current_state == MENU:
                             _start_menu_music()
-                    elif current_state == MAP:
-                        current_state = GAME
-                        map_dragging = False
                     elif current_state == GAME:
                         current_state = PAUSED
                     elif current_state == PAUSED:
@@ -4219,10 +3785,6 @@ def main():
                         _start_menu_music()
                 
                 # State-spezifische Keydown-Handler
-                elif current_state == MAP:
-                    consumed = event_handlers.handle_keydown_map(event)
-                    if consumed:
-                        continue
                 elif event.key == pygame.K_SPACE and current_state == INTRO:
                     current_state = MENU
                     _start_menu_music()
@@ -4239,9 +3801,7 @@ def main():
                 event_handlers.handle_keyup(event)
             
             elif event.type == pygame.MOUSEBUTTONDOWN:
-                if current_state == MAP:
-                    event_handlers.handle_mouse_map_down(event)
-                elif event.button == 1:
+                if event.button == 1:
                     if current_state == MENU:
                         for button in menu_buttons:
                             button.click()
@@ -4251,20 +3811,6 @@ def main():
                     elif current_state == PAUSED:
                         for button in pause_buttons:
                             button.click()
-            
-            elif event.type == pygame.MOUSEBUTTONUP:
-                if event.button == 1:
-                    map_dragging = False
-                elif event.button == 3:
-                    node_dragging = False
-                    node_drag_key = None
-                    block_resizing = False
-                    block_resize_handle = None
-                    block_moving = False
-            
-            elif event.type == pygame.MOUSEMOTION:
-                if current_state == MAP:
-                    event_handlers.handle_mouse_map_motion(event)
         
         # State-basiertes Rendering
         if current_state == INTRO:
@@ -4280,8 +3826,6 @@ def main():
         elif current_state == GAME:
             update_typewriter()
             draw_game(current_time)
-        elif current_state == MAP:
-            draw_map(current_time)
         elif current_state == PAUSED:
             draw_pause_menu(current_time)
         

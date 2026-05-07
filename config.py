@@ -33,7 +33,6 @@ INTRO = 0
 MENU = 1
 OPTIONS = 2
 GAME = 3
-MAP = 4
 PAUSED = 5
 
 # ========================
@@ -196,4 +195,3 @@ ILLOGICAL_RESPONSES = {
 # FILE PATHS
 # ========================
 SAVE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'dead_world_save.json')
-MAP_LAYOUT_FILE = os.path.join(os.path.dirname(__file__), 'custom_map_layout.json')
