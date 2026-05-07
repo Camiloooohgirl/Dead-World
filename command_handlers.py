@@ -693,21 +693,13 @@ def handle_interaction_commands(cmd):
                 _h("Der Schrank ist bereits aus dem Weg")
                 _h("")
         elif str(_game.current_room).startswith('krankenhaus_'):
-            _h("Hier steht kein relevanter Schrank. Geh ins Krankenhaus-Labor.")
+            _h("Hier steht kein relevanter Schrank.")
             _h("")
         else:
             _h("Hier ist kein schrank zum Schieben")
             _h("")
         return True
-
-    if _game.game_score >= 250:
-        _game.krankenhaus_flur_access = True
-        _game.unlock_transition('krankenhaus_flur')
-        _h("Aus der Ferne hörst du einen lauten Knall")
-        _h("Es hört sich an, als käme es aus dem Krankenhaus")
-        _h("Vielleicht solltest du nachsehen")
-        _h("")
-
+        
     if cmd in (
         'benutze nummern pad',
         'nummern pad benutzen',
