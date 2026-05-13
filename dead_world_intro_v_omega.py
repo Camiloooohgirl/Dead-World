@@ -752,7 +752,7 @@ rooms = {
         'in_development': False
     },
     'krankenhaus_Labor': {#Krankenhaus
-        'name': 'Krankenhaus - Flur: Osten',
+        'name': 'Krankenhaus - Labor',
         'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
         'exits': {'osten': 'krankenhaus_labor_rezeption','Süden':'krankenhaus_geheim_treppe'},
         'items': [],
@@ -762,6 +762,98 @@ rooms = {
         'name': 'Krankenhaus - Labor Treppe',
         'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
         'exits': {'Norden': 'krankenhaus_Labor','Runter':''},
+        'items': [],
+        'in_development': False
+    },
+    'gl_empfang': {#Geheimlabor
+        'name': 'Geheimlabor - Empfang',
+        'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
+        'exits': {'hoch':'krankenhaus_geheim_treppe','Süden':'Lagerraum','Osten' : 'gl_sicherheits_flur'},
+        'items': [],
+        'in_development': False
+    },
+    'gl_lagerraum': {#Geheimlabor
+        'name': 'Geheimlabor - Lagerraum',
+        'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
+        'exits': {'Norden':'gl_empfang'},
+        'items': ['ID Armband Lvl 1'],
+        'in_development': False
+    }, 
+    'gl_sicherheits_flur': {#Geheimlabor
+        'name': 'Geheimlabor - Sicherheits Flur',
+        'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
+        'exits': {'Westen':'gl_empfang','Osten': 'gl_sicherheits_lvl1_flur'},
+        'items': [],
+        'in_development': False
+    },
+    'gl_sicherheits_lvl1_flur': {#Geheimlabor
+        'name': 'Geheimlabor - Sicherheit lvl1 Flur',
+        'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
+        'exits': {'Norden':'gl_Schlafsaal','Osten': 'gl_kafeteria','Süden': 'gl_sicherheits_lvl2_flur','westen':'gl_sicherheits_flur'},
+        'items': [],
+        'in_development': False
+    },
+    'gl_schlafsaal': {#Geheimlabor
+        'name': 'Geheimlabor - Schlafsaal',
+        'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
+        'exits': {'Norden':'gl_schlafzimmer1','Westen': ' gl_schlafzimmer2','Osten': 'gl_schlafzimmer3','Süden': 'gl_sicherheits_lvl1_flur'},
+        'items': [],
+        'in_development': False
+    }, 
+    'gl_schlafzimmer1': {#Geheimlabor
+        'name': 'Geheimlabor - Schlafzimmer 1',
+        'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
+        'exits': {'Süden': 'gl_schlafsaal'},
+        'items': [],
+        'in_development': False
+    }, 
+    'gl_schlafzimmer2': {#Geheimlabor
+        'name': 'Geheimlabor - Schlafzimmer 2',
+        'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
+        'exits': {'Osten': 'gl_schlafsaal'},
+        'items': [],
+        'in_development': False
+    }, 
+    'gl_schlafzimmer3': {#Geheimlabor
+        'name': 'Geheimlabor - Schlafzimmer 3',
+        'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
+        'exits': {'Westen': 'gl_schlafsaal'},
+        'items': [],
+        'zombie_spawn': True,
+        'in_development': False
+    },
+    'gl_kafeteria': {#Geheimlabor
+        'name': 'Geheimlabor - Kafeteria',
+        'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
+        'exits': {'Osten': 'gl_küche','Süden': 'gl_sicherheits_lvl1_flur'},
+        'items': [],
+        'in_development': False
+    }, 
+    'gl_küche': {#Geheimlabor
+        'name': 'Geheimlabor - Schlafsaal',
+        'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
+        'exits': {'Osten': 'gl_kafeteria'},
+        'items': [],
+        'in_development': False
+    }, 
+    'gl_sicherheits_lvl2_flur': {#Geheimlabor
+        'name': 'Geheimlabor - Sicherheit lvl2 Flur',
+        'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
+        'exits': {'Norden':'gl_sicherheits_lvl1_flur','Osten': 'gl_presentationsraum','Westen':'gl_labor','Süden':'gl_bio_labor'},
+        'items': [],
+        'in_development': False
+    },
+    'gl_labor': {#Geheimlabor
+        'name': 'Geheimlabor - Labor',
+        'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
+        'exits': {'Osten': 'gl_sicherheits_lvl2_flur','Süden':'gl_labor_flur','westen':'gl_testlb_flur'},
+        'items': [],
+        'in_development': False
+    },
+    'gl_labor_flur': {#Geheimlabor
+        'name': 'Geheimlabor - Labor Flur',
+        'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
+        'exits': {'Norden': 'gl_Labor','Osten':'gl_drogen_test_labor'},
         'items': [],
         'in_development': False
     },
@@ -880,26 +972,19 @@ rooms = {
     'krankenhaus_mitarbeiter_raum': {#Krankenhaus
         'name': 'Krankenhaus - Mitarbeiter Raum',
         'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
-        'exits': {'Westen': 'krankenhaus_schließfach_raum','Süden': 'krankenhaus_flur_norden_f2'},
+        'exits': {'Westen': 'krankenhaus_schließfach_raum','Süden': 'krankenhaus_mitarbeiter_flur'},
         'items': [],
         'in_development': False
     },
-    'krankenhaus_schliefach_raum': {#Krankenhaus
+    'krankenhaus_schließfach_raum': {#Krankenhaus
         'name': 'Krankenhaus - Schließfach Raum',
         'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
-        'exits': {'Süden': 'krankenhaus_mitarbeiter_raum'},
+        'exits': {'Osten': 'krankenhaus_mitarbeiter_raum'},
         'items': [],
         'in_development': False
     },
     'krankenhaus_schwesterstation': {#Krankenhaus
         'name': 'Krankenhaus - Schwesternstation',
-        'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
-        'exits': {'Süden': 'krankenhaus_mitarbeiter_raum'},
-        'items': [],
-        'in_development': False
-    },
-    'krankenhaus_schliefach_raum': {#Krankenhaus
-        'name': 'Krankenhaus - Schließfach Raum',
         'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
         'exits': {'Norden': 'krankenhaus_krankenzimmer','Süden': 'krankenhaus_waschraum_flur'},
         'items': [],
