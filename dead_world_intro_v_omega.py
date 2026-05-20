@@ -761,14 +761,14 @@ rooms = {
     'krankenhaus_geheim_treppe': {#Krankenhaus
         'name': 'Krankenhaus - Labor Treppe',
         'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
-        'exits': {'Norden': 'krankenhaus_Labor','Runter':''},
+        'exits': {'Norden': 'krankenhaus_Labor'},
         'items': [],
         'in_development': False
     },
     'gl_empfang': {#Geheimlabor
         'name': 'Geheimlabor - Empfang',
         'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
-        'exits': {'hoch':'krankenhaus_geheim_treppe','Süden':'Lagerraum','Osten' : 'gl_sicherheits_flur'},
+        'exits': {'Süden': 'gl_lagerraum', 'Osten': 'gl_sicherheits_flur'},
         'items': [],
         'in_development': False
     },
@@ -1737,7 +1737,11 @@ def try_transition(room_key, direction):
     return (False, None, None, 'Du kannst nicht in diese Richtung gehen.')
 
 def unlock_transition(transition_id):
-    """Kompatibilitätsfunktion (Transition-Locks wurden entfernt)."""
+    """Aktualisiert dynamische Übergänge nach Puzzle-Fortschritt."""
+    if transition_id in ('bib_3_4', 'bibliothek_3_4'):
+        apply_bibliothek_bookshelf_state()
+    elif transition_id == 'krankenhaus_geheim_treppe':
+        apply_krankenhaus_geheimlabor_state()
     return None
 
 def reset_transitions():
@@ -1774,6 +1778,37 @@ def apply_bibliothek_bookshelf_state():
             'BÜCHERREGAL den Durchgang. Wenn du dich dagegenstemmst, '
             'könntest du es vielleicht zur Seite SCHIEBEN.'
         )
+    TRANSITIONS[:] = rebuild_transitions_from_exits()
+
+
+def apply_krankenhaus_geheimlabor_state():
+    """Synchronisiert runter/hoch zwischen krankenhaus_geheim_treppe und gl_empfang
+    mit dem Flag `numpad_nutzen`."""
+    global TRANSITIONS
+    treppe = rooms.get('krankenhaus_geheim_treppe')
+    empfang = rooms.get('gl_empfang')
+    if not treppe or not empfang:
+        return
+    if numpad_nutzen:
+        treppe.setdefault('exits', {})['runter'] = 'gl_empfang'
+        empfang.setdefault('exits', {})['hoch'] = 'krankenhaus_geheim_treppe'
+        treppe['description'] = (
+            'Hinter dem geöffneten Nummern-Pad führt eine Treppe nach unten '
+            'ins Geheimlabor. Im NORDEN gelangst du zurück ins Labor.'
+        )
+    else:
+        treppe.get('exits', {}).pop('runter', None)
+        empfang.get('exits', {}).pop('hoch', None)
+        if krankenhaus_schrank_geschoben:
+            treppe['description'] = (
+                'Hinter dem zur Seite geschobenen Schrank ist eine Tür mit '
+                'einem Nummern-Pad. Ein kleines Fenster zeigt eine Treppe nach unten. '
+                'Im NORDEN führt der Weg zurück ins Labor.'
+            )
+        else:
+            treppe['description'] = (
+                'Eine enge Treppe. Im NORDEN führt der Weg zurück ins Labor.'
+            )
     TRANSITIONS[:] = rebuild_transitions_from_exits()
 
 
@@ -2038,7 +2073,7 @@ class MenuButton:
 def start_game():
     global current_state, game_history, current_room, player_inventory, prolog_shown, prolog_lines, prolog_line_index, menu_music_playing, visited_rooms, zombie_kill_times
     global game_score, game_moves, view_mode, visited_rooms_desc, game_start_ticks, pending_ambiguity
-    global bibliothek_4_schrank_geschoben
+    global bibliothek_4_schrank_geschoben, krankenhaus_schrank_geschoben, numpad_nutzen
     current_state = GAME
     game_history = []
     current_room = 'start'
@@ -2076,6 +2111,9 @@ def start_game():
     # Bücherregal in der Bibliothek den Durchgang wieder blockiert.
     bibliothek_4_schrank_geschoben = False
     apply_bibliothek_bookshelf_state()
+    krankenhaus_schrank_geschoben = False
+    numpad_nutzen = False
+    apply_krankenhaus_geheimlabor_state()
 
     # Menü-Musik ausblenden
     pygame.mixer.music.fadeout(800)
@@ -2148,8 +2186,9 @@ def load_game_from_menu():
     safe_durchsucht_haus1 = data.get('safe_durchsucht_haus1', False)
     krankenhaus_schrank_geschoben = data.get('krankenhaus_schrank_geschoben', False)
     numpad_nutzen = data.get('numpad_nutzen', False)
-    # Bibliotheks-Bücherregal-Übergang anhand des geladenen Flags rekonstruieren.
+    # Puzzle-Übergänge anhand der geladenen Flags rekonstruieren.
     apply_bibliothek_bookshelf_state()
+    apply_krankenhaus_geheimlabor_state()
     for ik, charge_val in data.get('item_charges', {}).items():
         if ik in ITEM_DEFS:
             ITEM_DEFS[ik].charge = charge_val
@@ -2650,8 +2689,9 @@ def restore_game():
     safe_durchsucht_haus1 = data.get('safe_durchsucht_haus1', False)
     krankenhaus_schrank_geschoben = data.get('krankenhaus_schrank_geschoben', False)
     numpad_nutzen = data.get('numpad_nutzen', False)
-    # Bibliotheks-Bücherregal-Übergang anhand des geladenen Flags rekonstruieren.
+    # Puzzle-Übergänge anhand der geladenen Flags rekonstruieren.
     apply_bibliothek_bookshelf_state()
+    apply_krankenhaus_geheimlabor_state()
     for ik, charge_val in data.get('item_charges', {}).items():
         if ik in ITEM_DEFS:
             ITEM_DEFS[ik].charge = charge_val
