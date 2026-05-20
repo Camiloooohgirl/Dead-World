@@ -857,6 +857,48 @@ rooms = {
         'items': [],
         'in_development': False
     },
+    'gl_drogen_test_labor': {#Geheimlabor
+        'name': 'Geheimlabor - Drogen Test Labor',
+        'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
+        'exits': {'Norden': 'gl_labor_flur','Westen':'gl_test_labor'},
+        'items': [],
+        'in_development': False
+    },
+    'gl_test_labor': {#Geheimlabor
+        'name': 'Geheimlabor - Test Labor',
+        'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
+        'exits': {'Süden': 'gl_boss_raum','Osten':'gl_test_labor'},
+        'items': [],
+        'in_development': False
+    },
+    'gl_boss_raum': {#Geheimlabor
+        'name': 'Geheimlabor - Boss Raum',
+        'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
+        'exits': {'Norden': 'gl_test_labor','Osten':'gl_büro'},
+        'items': [],
+        'in_development': False
+    },
+    'gl_büro': {#Geheimlabor
+        'name': 'Geheimlabor - Büro',
+        'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
+        'exits': {'Westen': 'gl_boss_raum','Norden':'gl_bio_labor_flur'},
+        'items': [],
+        'in_development': False
+    },
+    'gl_bio_labor_flur': {#Geheimlabor
+        'name': 'Geheimlabor - Bio-Labor Flur',
+        'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
+        'exits': {'Süden': 'gl_büro','Norden':'gl_bio_labor'},
+        'items': [],
+        'in_development': False
+    },
+    'gl_bio_labor': {#Geheimlabor
+        'name': 'Geheimlabor - Bio-Labor',
+        'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
+        'exits': {'Süden': 'gl_bio_labor_flur','Norden':'gl_sicherheits_lvl2_flur'},
+        'items': [],
+        'in_development': False
+    },
     'krankenhaus_zwischen_flur': {#Krankenhaus
         'name': 'Krankenhaus - Zwischenflur',
         'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
