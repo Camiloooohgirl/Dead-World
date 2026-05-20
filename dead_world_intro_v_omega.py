@@ -899,6 +899,27 @@ rooms = {
         'items': [],
         'in_development': False
     },
+    'gl_presentationsraum': {#Geheimlabor
+        'name': 'Geheimlabor - Presentationsraum',
+        'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
+        'exits': {'Süden': 'gl_server_flur','Westen':'gl_sicherheits_lvl2_flur'},
+        'items': [],
+        'in_development': False
+    },
+    'gl_server_flur': {#Geheimlabor
+        'name': 'Geheimlabor - Server-Flur',
+        'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
+        'exits': {'Norden': 'gl_presentationsraum','Westen':'gl_server_raum'},
+        'items': [],
+        'in_development': False
+    },
+    'gl_server_raum': {#Geheimlabor
+        'name': 'Geheimlabor - Server Raum',
+        'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
+        'exits': {'Osten': 'gl_server_flur'},
+        'items': [],
+        'in_development': False
+    },
     'krankenhaus_zwischen_flur': {#Krankenhaus
         'name': 'Krankenhaus - Zwischenflur',
         'description': 'Kaputte Glastüren stehen offen. Aus dem Inneren des Krankenhauses hörst du Zombies schreien. Im OSTEN führt der Weg zurück auf die Straße.',
